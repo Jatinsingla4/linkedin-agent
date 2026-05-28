@@ -116,42 +116,20 @@ class Orchestrator:
             else:
                 logger.warning("  No image — will post text-only")
 
-            # ── Step 6: Approval / Version selection ──────────────────────
-            if len(posts) > 1:
-                logger.info(f"Sending {len(posts)} versions to Telegram for selection...")
-                selected_post, edited_text = await self.approval_bot.request_version_selection(
-                    posts=posts,
-                    topic=topic.title,
-                    image_path=image_path,
+            # ── Step 6: Version selection (always use version UI) ─────────
+            logger.info(f"Sending {len(posts)} version(s) to Telegram for selection...")
+            selected_post, edited_text = await self.approval_bot.request_version_selection(
+                posts=posts,
+                topic=topic.title,
+                image_path=image_path,
+            )
+            if selected_post is None:
+                logger.info("Post skipped — pipeline complete")
+                await self.approval_bot.send_notification(
+                    "📭 Skipped. I'll generate fresh versions next time!"
                 )
-                if selected_post is None:
-                    logger.info("All versions skipped — pipeline complete")
-                    await self.approval_bot.send_notification(
-                        "📭 Skipped. I'll generate fresh versions next time!"
-                    )
-                    return
-                final_text = edited_text if edited_text else selected_post.full_text
-            else:
-                logger.info("Sending to Telegram for approval...")
-                approval = await self.approval_bot.request_approval(
-                    post_text=posts[0].full_text,
-                    topic=topic.title,
-                    image_path=image_path,
-                )
-                if approval.status == ApprovalStatus.REJECTED:
-                    logger.info("Post rejected — pipeline complete")
-                    await self.approval_bot.send_notification(
-                        "📭 Post skipped. I'll generate a new one next time!"
-                    )
-                    return
-                if approval.status == ApprovalStatus.TIMEOUT:
-                    logger.info("Approval timed out — pipeline complete")
-                    return
-                final_text = (
-                    approval.edited_text
-                    if approval.status == ApprovalStatus.EDITED and approval.edited_text
-                    else posts[0].full_text
-                )
+                return
+            final_text = edited_text if edited_text else selected_post.full_text
 
             # ── Step 7: Publish ────────────────────────────────────────────
             logger.info("Publishing to LinkedIn...")

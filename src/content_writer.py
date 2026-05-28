@@ -73,7 +73,7 @@ class ContentWriter:
         posts = []
         for i in range(count):
             if i > 0:
-                await asyncio.sleep(20)
+                await asyncio.sleep(35)
             try:
                 post = await self.generate_post(topic)
                 posts.append(post)
