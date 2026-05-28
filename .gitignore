@@ -1,0 +1,40 @@
+# ── Secrets — NEVER commit these ─────────────────────────────
+.env
+*.env
+.env.*
+!.env.example
+
+# ── Agent runtime files ───────────────────────────────────────
+agent.log
+agent_state.json
+*.log
+
+# ── Temp image files ──────────────────────────────────────────
+linkedin_img_*
+*.tmp
+
+# ── Python ────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+*.egg-info/
+dist/
+build/
+
+# ── OS ────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── IDE ───────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
