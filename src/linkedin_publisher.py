@@ -201,6 +201,116 @@ class LinkedInPublisher:
 
     # ── Payload builders ──────────────────────────────────────────────────────
 
+    async def publish_poll(
+        self, intro_text: str, question: str, options: list[str], hashtags: list[str]
+    ) -> "PublishResult":
+        """Publish a LinkedIn poll post."""
+        hashtag_line = " ".join(f"#{h.lstrip('#')}" for h in hashtags)
+        full_text = f"{intro_text}\n\n{hashtag_line}"
+        payload = {
+            "author": config.linkedin_person_urn,
+            "lifecycleState": "PUBLISHED",
+            "specificContent": {
+                "com.linkedin.ugc.ShareContent": {
+                    "shareCommentary": {"text": full_text},
+                    "shareMediaCategory": "POLL",
+                    "media": [{
+                        "status": "READY",
+                        "poll": {
+                            "question": question,
+                            "options": [{"text": o[:30]} for o in options[:4]],
+                            "settings": {"duration": "THREE_DAYS"}
+                        }
+                    }]
+                }
+            },
+            "visibility": {"com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"},
+        }
+        connector = aiohttp.TCPConnector(ssl=False)
+        try:
+            async with aiohttp.ClientSession(connector=connector) as session:
+                async with session.post(
+                    config.linkedin_ugc_posts_url, json=payload, headers=self._headers
+                ) as resp:
+                    result = await self._handle_post_response(resp)
+                    if not result.success:
+                        logger.warning("Poll API failed — falling back to text post")
+                        return await self._publish_text_only(full_text + f"\n\n🗳️ {question}\n" + "\n".join(f"• {o}" for o in options))
+                    return result
+        except Exception as e:
+            logger.error(f"Poll publish error: {e} — falling back to text")
+            return await self._publish_text_only(full_text)
+
+    async def publish_document(self, text: str, pdf_path: str, title: str) -> "PublishResult":
+        """Publish a LinkedIn carousel document (PDF)."""
+        connector = aiohttp.TCPConnector(ssl=False)
+        async with aiohttp.ClientSession(connector=connector) as session:
+            # Step 1: Register document upload
+            reg_payload = {
+                "registerUploadRequest": {
+                    "recipes": ["urn:li:digitalmediaRecipe:feedshare-document"],
+                    "owner": config.linkedin_person_urn,
+                    "serviceRelationships": [{
+                        "relationshipType": "OWNER",
+                        "identifier": "urn:li:userGeneratedContent"
+                    }]
+                }
+            }
+            async with session.post(
+                config.linkedin_assets_url, json=reg_payload, headers=self._headers
+            ) as resp:
+                if resp.status != 200:
+                    body = await resp.text()
+                    logger.error(f"Document register failed ({resp.status}): {body[:200]}")
+                    return await self._publish_text_only(text)
+                data = await resp.json()
+
+            value = data.get("value", {})
+            upload_url = (
+                value.get("uploadMechanism", {})
+                     .get("com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest", {})
+                     .get("uploadUrl")
+            )
+            asset_urn = value.get("asset")
+
+            if not upload_url or not asset_urn:
+                logger.error("Could not get document upload URL")
+                return await self._publish_text_only(text)
+
+            # Step 2: Upload PDF binary
+            with open(pdf_path, "rb") as f:
+                pdf_data = f.read()
+            upload_headers = {
+                "Authorization": f"Bearer {config.linkedin_access_token}",
+                "Content-Type": "application/octet-stream",
+            }
+            async with session.put(upload_url, data=pdf_data, headers=upload_headers) as resp:
+                if resp.status not in (200, 201):
+                    logger.error(f"Document upload failed ({resp.status})")
+                    return await self._publish_text_only(text)
+
+            # Step 3: Create post
+            post_payload = {
+                "author": config.linkedin_person_urn,
+                "lifecycleState": "PUBLISHED",
+                "specificContent": {
+                    "com.linkedin.ugc.ShareContent": {
+                        "shareCommentary": {"text": text},
+                        "shareMediaCategory": "DOCUMENT",
+                        "media": [{
+                            "status": "READY",
+                            "media": asset_urn,
+                            "title": {"text": title[:200]},
+                        }]
+                    }
+                },
+                "visibility": {"com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"},
+            }
+            async with session.post(
+                config.linkedin_ugc_posts_url, json=post_payload, headers=self._headers
+            ) as resp:
+                return await self._handle_post_response(resp)
+
     async def post_comment(self, post_urn: str, comment_text: str) -> bool:
         """Post a first comment on a just-published post."""
         import urllib.parse

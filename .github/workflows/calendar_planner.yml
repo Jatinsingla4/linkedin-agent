@@ -1,23 +1,17 @@
-name: LinkedIn Agent
+name: Content Calendar Planner
 
 on:
   schedule:
-    # Tue, Thu, Sat, Sun at 10:00 AM IST (4:30 AM UTC) — peak LinkedIn engagement
-    - cron: "30 4 * * 2,4,6,0"
+    # Every Sunday at 9:00 AM IST (3:30 AM UTC) — plan the week ahead
+    - cron: "30 3 * * 0"
 
-  workflow_dispatch:
-    inputs:
-      dry_run:
-        description: "Dry run (generate post but don't publish)"
-        required: false
-        default: "false"
-        type: boolean
+  workflow_dispatch: {}
 
 jobs:
-  post:
-    name: Generate & Post
+  plan:
+    name: Generate Weekly Content Plan
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 30
 
     steps:
       - name: Checkout repository
@@ -32,7 +26,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run LinkedIn Agent
+      - name: Run Calendar Planner
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           LINKEDIN_CLIENT_ID: ${{ secrets.LINKEDIN_CLIENT_ID }}
@@ -42,33 +36,17 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           UNSPLASH_ACCESS_KEY: ${{ secrets.UNSPLASH_ACCESS_KEY }}
-          POSTS_PER_WEEK: "4"
-          APPROVAL_TIMEOUT_HOURS: "12"
-          GENERATE_VERSIONS: "2"
-          ENABLE_FIRST_COMMENT: "true"
           YOUR_NAME: "Jatin"
           YOUR_ROLE: "AI Executive"
           YOUR_COMPANY: "Grapes Worldwide"
           YOUR_LINKEDIN_NICHE: "marketing,branding,AI,FMCG,agency life,startup"
-          PERSONAL_STORY_DAY: "3"
-          POLL_DAY: "6"
-          CAROUSEL_DAY: "5"
-          DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
-        run: python orchestrator.py
+        run: python calendar_planner.py
 
-      - name: Save agent state back to repo
+      - name: Save content queue to repo
         if: always()
         run: |
           git config user.name "LinkedIn Agent Bot"
           git config user.email "agent@linkedin-bot.com"
           git add agent_state.json
-          git diff --staged --quiet || git commit -m "chore: update agent state [skip ci]"
+          git diff --staged --quiet || git commit -m "chore: update content queue [skip ci]"
           git push || true
-
-      - name: Upload agent log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: agent-log-${{ github.run_id }}
-          path: agent.log
-          retention-days: 30

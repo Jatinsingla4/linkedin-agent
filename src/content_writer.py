@@ -83,6 +83,109 @@ class ContentWriter:
             raise ValueError("All post generation attempts failed")
         return posts
 
+    async def generate_personal_story(self, topic: "Topic") -> "GeneratedPost":
+        """Generate a personal story post — real experience, lesson learned."""
+        prompt = f"""{self._system_context}
+
+Topic for inspiration: {topic.title}
+
+Write a LinkedIn post as a PERSONAL STORY. Jatin is sharing something real from his work life.
+
+Rules:
+- Start with a time anchor: "This week,", "Last month,", "3 years ago,"
+- Share ONE specific moment/mistake/observation (not a list)
+- Be vulnerable — share what went wrong or what surprised you
+- What happened → what you learned → what changed
+- End with a genuine question or bold 1-liner
+- 120-200 words, conversational, no jargon
+
+Return ONLY valid JSON:
+{{
+  "hook": "opening time-anchored sentence (15 words max)",
+  "body": "the story in 3-4 short paragraphs",
+  "cta": "closing question or statement",
+  "hashtags": ["tag1", "tag2", "tag3", "tag4", "tag5"],
+  "image_query": "2-4 word Unsplash search query",
+  "post_type": "image"
+}}"""
+        response = await self.model.generate_content_async(
+            prompt,
+            generation_config=genai.GenerationConfig(temperature=0.9, max_output_tokens=2048),
+        )
+        return self._parse_response(response.text.strip(), topic)
+
+    async def generate_poll(self, topic: "Topic") -> dict:
+        """Generate a LinkedIn poll with question + 4 options."""
+        prompt = f"""{self._system_context}
+
+Topic: {topic.title}
+
+Create a LinkedIn poll that will drive maximum engagement.
+
+Rules:
+- Question: provocative, makes people think, under 120 characters
+- 4 options: short (under 30 chars each), cover different viewpoints
+- Intro text: 2-3 conversational sentences setting up the question
+- Make it about opinions/choices, not facts with a right answer
+
+Return ONLY valid JSON:
+{{
+  "intro_text": "2-3 sentence intro for the poll",
+  "question": "The poll question?",
+  "options": ["Option A", "Option B", "Option C", "Option D"],
+  "hashtags": ["tag1", "tag2", "tag3", "tag4"]
+}}"""
+        response = await self.model.generate_content_async(
+            prompt,
+            generation_config=genai.GenerationConfig(temperature=0.85, max_output_tokens=500),
+        )
+        raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", response.text.strip(), flags=re.MULTILINE)
+        return json.loads(raw)
+
+    async def generate_carousel_slides(self, topic: "Topic") -> list[dict]:
+        """Generate 5-6 slides for a LinkedIn carousel/PDF post."""
+        prompt = f"""{self._system_context}
+
+Topic: {topic.title}
+
+Create a LinkedIn carousel (6 slides). Each slide is one screen — keep it tight.
+
+Return ONLY valid JSON array:
+[
+  {{"slide": 1, "type": "hook", "title": "Bold 6-8 word headline", "content": "one line teaser"}},
+  {{"slide": 2, "type": "content", "title": "Point title", "content": "2-3 short bullet points separated by newlines"}},
+  {{"slide": 3, "type": "content", "title": "Point title", "content": "2-3 short bullet points"}},
+  {{"slide": 4, "type": "content", "title": "Point title", "content": "2-3 short bullet points"}},
+  {{"slide": 5, "type": "content", "title": "Point title", "content": "2-3 short bullet points"}},
+  {{"slide": 6, "type": "cta", "title": "Key takeaway", "content": "What to do next + follow Jatin for more"}}
+]"""
+        response = await self.model.generate_content_async(
+            prompt,
+            generation_config=genai.GenerationConfig(temperature=0.8, max_output_tokens=1500),
+        )
+        raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", response.text.strip(), flags=re.MULTILINE)
+        return json.loads(raw)
+
+    async def generate_weekly_topics(self, count: int = 5) -> list[str]:
+        """Generate topic ideas for the week's content calendar."""
+        prompt = f"""Generate {count} LinkedIn post topic ideas for {config.your_name}, {config.your_role} at {config.your_company}.
+Niche: {", ".join(config.your_niche)}
+
+Requirements:
+- Mix of types: industry insight, personal lesson, controversial take, how-to, trending
+- Specific and timely — not generic
+- Each topic max 15 words
+- Think about what {config.your_name}'s audience (marketers, brand folks, startup people) would actually want to read
+
+Return ONLY a valid JSON array of strings:
+["topic 1", "topic 2", "topic 3", "topic 4", "topic 5"]"""
+        response = await self.model.generate_content_async(
+            prompt,
+            generation_config=genai.GenerationConfig(temperature=0.9, max_output_tokens=500),
+        )
+        raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", response.text.strip(), flags=re.MULTILINE)
+        return json.loads(raw)
+
     async def generate_first_comment(self, post_text: str) -> str:
         """Generate a short first comment to boost LinkedIn algorithm reach."""
         prompt = f"""This LinkedIn post was just published:

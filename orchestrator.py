@@ -1,20 +1,11 @@
 """
-orchestrator.py — The main pipeline runner.
+orchestrator.py — Main pipeline runner.
 
-Called by:
-  - GitHub Actions (scheduled cron)
-  - Manual: python orchestrator.py
-
-Pipeline:
-  1. Sunday: send weekly analytics report
-  2. Check Telegram for /topic suggestion
-  3. Fetch trending topics (or use suggestion)
-  4. Pick best topic (avoids repeats)
-  5. Generate 2 post versions with Gemini
-  6. Fetch image (Unsplash)
-  7. Send versions to Telegram — user picks one
-  8. Publish to LinkedIn
-  9. Auto-post first comment (2 min later)
+Post type by day (IST):
+  Tuesday   → Regular post (2 versions)
+  Thursday  → Personal Story
+  Saturday  → PDF Carousel
+  Sunday    → LinkedIn Poll
 """
 
 import asyncio
@@ -33,7 +24,6 @@ from src.image_fetcher import ImageFetcher
 from src.approval_bot import ApprovalBot, ApprovalStatus
 from src.linkedin_publisher import LinkedInPublisher
 
-# ── Logging setup ─────────────────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
@@ -60,124 +50,249 @@ class Orchestrator:
     # ── Main entry point ──────────────────────────────────────────────────────
 
     async def run(self) -> None:
+        today = datetime.now(timezone.utc).weekday()
+        post_type = self._get_post_type(today)
+
         logger.info("=" * 60)
-        logger.info("🚀 LinkedIn Agent pipeline started")
-        logger.info(f"   User: {config.your_name} @ {config.your_company}")
+        logger.info(f"🚀 LinkedIn Agent | {post_type.upper()} post | {config.your_name} @ {config.your_company}")
         logger.info("=" * 60)
 
         await self.approval_bot.send_notification(
             f"🤖 *LinkedIn Agent Starting*\n"
-            f"Fetching today's topics for you, {config.your_name}..."
+            f"Post type today: *{post_type}* 📝"
         )
 
-        # Sunday weekly report
         await self._maybe_send_weekly_report()
-
-        image_path: Optional[str] = None
+        await self.send_performance_reminders()
 
         try:
-            # ── Step 1: Check Telegram for /topic suggestion ──────────────
-            logger.info("Checking Telegram for /topic suggestion...")
-            topic_suggestion = await self.approval_bot.get_topic_suggestion()
+            # Get topic (from queue or fresh)
+            topic = await self._get_topic()
 
-            # ── Step 2: Fetch or use suggested topic ──────────────────────
-            if topic_suggestion:
-                logger.info(f"Using Telegram suggestion: {topic_suggestion}")
-                topics = [Topic(title=topic_suggestion, source="telegram", relevance_score=10.0)]
-                await self.approval_bot.send_notification(
-                    f"📌 Using your suggested topic:\n_{topic_suggestion}_"
-                )
+            if post_type == "poll":
+                await self._run_poll_pipeline(topic)
+            elif post_type == "carousel":
+                await self._run_carousel_pipeline(topic)
+            elif post_type == "story":
+                await self._run_story_pipeline(topic)
             else:
-                logger.info("Step 1/6: Fetching topics...")
-                topics = await self.topic_engine.get_topics(count=15)
-
-            # ── Step 3: Pick topic ─────────────────────────────────────────
-            logger.info("Selecting best topic...")
-            topic = self._pick_topic(topics)
-            logger.info(f"  Selected: {topic.title}")
-
-            # ── Step 4: Generate post versions ────────────────────────────
-            versions = config.generate_versions
-            logger.info(f"Generating {versions} post version(s)...")
-            if versions > 1:
-                posts = await self.content_writer.generate_multiple_posts(topic, count=versions)
-                logger.info(f"  Generated {len(posts)} versions")
-            else:
-                post = await self.content_writer.generate_post(topic)
-                posts = [post]
-                logger.info(f"  Generated post ({post.word_count} words | type: {post.post_type})")
-
-            # ── Step 5: Fetch image ────────────────────────────────────────
-            logger.info(f"Fetching image (query: '{posts[0].image_query}')...")
-            fetched_image = await self.image_fetcher.fetch_image(posts[0].image_query)
-            image_path = fetched_image.file_path if fetched_image else None
-            if image_path:
-                logger.info(f"  Image ready: {image_path}")
-            else:
-                logger.warning("  No image — will post text-only")
-
-            # ── Step 6: Version selection (always use version UI) ─────────
-            logger.info(f"Sending {len(posts)} version(s) to Telegram for selection...")
-            selected_post, edited_text = await self.approval_bot.request_version_selection(
-                posts=posts,
-                topic=topic.title,
-                image_path=image_path,
-            )
-            if selected_post is None:
-                logger.info("Post skipped — pipeline complete")
-                await self.approval_bot.send_notification(
-                    "📭 Skipped. I'll generate fresh versions next time!"
-                )
-                return
-            final_text = edited_text if edited_text else selected_post.full_text
-
-            # ── Step 7: Publish ────────────────────────────────────────────
-            logger.info("Publishing to LinkedIn...")
-            result = await self.publisher.publish(
-                text=final_text,
-                image_path=image_path,
-            )
-
-            if result.success:
-                logger.info(f"✅ Post published! URL: {result.post_url}")
-                self._mark_topic_used(topic)
-                self._state["posts_published"] = self._state.get("posts_published", 0) + 1
-                self._state["posts_this_week"] = self._state.get("posts_this_week", 0) + 1
-                self._state["last_post_at"] = datetime.now(timezone.utc).isoformat()
-                self._save_state()
-
-                await self.approval_bot.send_notification(
-                    f"🎉 *Post published successfully!*\n"
-                    f"🔗 {result.post_url or 'Check your LinkedIn feed'}\n\n"
-                    f"📌 Topic: _{topic.title[:80]}_"
-                )
-
-                # Save post for performance reminder
-                self._save_recent_post(topic.title, result.post_url)
-
-                # ── Step 8: Auto first comment ─────────────────────────────
-                if config.enable_first_comment and result.post_id:
-                    await self._post_first_comment(final_text, result.post_id)
-
-            else:
-                logger.error(f"❌ Publish failed: {result.error}")
-                await self.approval_bot.send_notification(
-                    f"❌ *Failed to publish post*\n`{result.error}`\n\n"
-                    f"Please check your LinkedIn token or publish manually."
-                )
+                await self._run_regular_pipeline(topic)
 
         except Exception as e:
             logger.exception(f"Pipeline error: {e}")
             await self.approval_bot.send_notification(
-                f"🔥 *Agent pipeline error:*\n`{str(e)[:300]}`\n\nCheck logs."
+                f"🔥 *Pipeline error:*\n`{str(e)[:300]}`"
             )
             raise
 
+    def _get_post_type(self, weekday: int) -> str:
+        if weekday == config.poll_day:
+            return "poll"
+        if weekday == config.carousel_day:
+            return "carousel"
+        if weekday == config.personal_story_day:
+            return "story"
+        return "regular"
+
+    # ── Topic resolution ──────────────────────────────────────────────────────
+
+    async def _get_topic(self) -> Topic:
+        # Check Telegram /topic suggestion first
+        topic_suggestion = await self.approval_bot.get_topic_suggestion()
+        if topic_suggestion:
+            await self.approval_bot.send_notification(
+                f"📌 Using your suggested topic:\n_{topic_suggestion}_"
+            )
+            return Topic(title=topic_suggestion, source="telegram", relevance_score=10.0)
+
+        # Check content calendar queue
+        queue = self._state.get("content_queue", [])
+        if queue:
+            title = queue.pop(0)
+            self._state["content_queue"] = queue
+            self._save_state()
+            logger.info(f"Using queued topic: {title}")
+            await self.approval_bot.send_notification(f"📅 Using this week's planned topic:\n_{title}_")
+            return Topic(title=title, source="calendar", relevance_score=9.0)
+
+        # Auto-fetch
+        topics = await self.topic_engine.get_topics(count=15)
+        return self._pick_topic(topics)
+
+    # ── Regular pipeline ──────────────────────────────────────────────────────
+
+    async def _run_regular_pipeline(self, topic: Topic) -> None:
+        image_path: Optional[str] = None
+        try:
+            versions = config.generate_versions
+            logger.info(f"Generating {versions} versions for: {topic.title[:60]}")
+            posts = await self.content_writer.generate_multiple_posts(topic, count=versions)
+
+            fetched = await self.image_fetcher.fetch_image(posts[0].image_query)
+            image_path = fetched.file_path if fetched else None
+
+            selected_post, edited_text = await self.approval_bot.request_version_selection(
+                posts=posts, topic=topic.title, image_path=image_path
+            )
+            if selected_post is None:
+                await self.approval_bot.send_notification("📭 Skipped. Next time!")
+                return
+
+            final_text = edited_text or selected_post.full_text
+            await self._publish_and_notify(final_text, image_path, topic)
         finally:
             if image_path:
                 ImageFetcher.cleanup(image_path)
-            logger.info("Pipeline finished")
-            logger.info("=" * 60)
+
+    # ── Personal Story pipeline ───────────────────────────────────────────────
+
+    async def _run_story_pipeline(self, topic: Topic) -> None:
+        image_path: Optional[str] = None
+        try:
+            logger.info(f"Generating personal story for: {topic.title[:60]}")
+            post = await self.content_writer.generate_personal_story(topic)
+            posts = [post]
+
+            fetched = await self.image_fetcher.fetch_image(post.image_query)
+            image_path = fetched.file_path if fetched else None
+
+            selected_post, edited_text = await self.approval_bot.request_version_selection(
+                posts=posts, topic=f"[STORY] {topic.title}", image_path=image_path
+            )
+            if selected_post is None:
+                await self.approval_bot.send_notification("📭 Story skipped.")
+                return
+
+            final_text = edited_text or selected_post.full_text
+            await self._publish_and_notify(final_text, image_path, topic)
+        finally:
+            if image_path:
+                ImageFetcher.cleanup(image_path)
+
+    # ── Poll pipeline ─────────────────────────────────────────────────────────
+
+    async def _run_poll_pipeline(self, topic: Topic) -> None:
+        logger.info(f"Generating poll for: {topic.title[:60]}")
+        try:
+            poll_data = await self.content_writer.generate_poll(topic)
+        except Exception as e:
+            logger.error(f"Poll generation failed: {e} — running regular post instead")
+            await self._run_regular_pipeline(topic)
+            return
+
+        intro = poll_data.get("intro_text", "")
+        question = poll_data.get("question", "")
+        options = poll_data.get("options", [])
+        hashtags = poll_data.get("hashtags", [])
+
+        approved = await self.approval_bot.request_poll_approval(
+            intro_text=intro, question=question, options=options, topic=topic.title
+        )
+        if not approved:
+            await self.approval_bot.send_notification("📭 Poll skipped.")
+            return
+
+        result = await self.publisher.publish_poll(intro, question, options, hashtags)
+        if result.success:
+            self._mark_topic_used(topic)
+            self._state["posts_published"] = self._state.get("posts_published", 0) + 1
+            self._state["posts_this_week"] = self._state.get("posts_this_week", 0) + 1
+            self._state["last_post_at"] = datetime.now(timezone.utc).isoformat()
+            self._save_recent_post(topic.title, result.post_url)
+            self._save_state()
+            await self.approval_bot.send_notification(
+                f"🗳️ *Poll published!*\n🔗 {result.post_url or 'Check your LinkedIn feed'}"
+            )
+        else:
+            await self.approval_bot.send_notification(f"❌ Poll failed: `{result.error}`")
+
+    # ── Carousel pipeline ─────────────────────────────────────────────────────
+
+    async def _run_carousel_pipeline(self, topic: Topic) -> None:
+        logger.info(f"Generating carousel for: {topic.title[:60]}")
+        pdf_path: Optional[str] = None
+        try:
+            slides = await self.content_writer.generate_carousel_slides(topic)
+
+            from src.pdf_generator import create_carousel_pdf
+            pdf_path = create_carousel_pdf(slides)
+            logger.info(f"PDF created: {pdf_path}")
+
+            # Send preview via Telegram
+            titles = "\n".join(f"  Slide {s['slide']}: {s['title']}" for s in slides)
+            await self.approval_bot.send_notification(
+                f"📊 *Carousel Preview*\n━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"📌 Topic: _{topic.title[:80]}_\n\n{titles}"
+            )
+
+            # Use version selection for final approval (reuse existing UI)
+            placeholder_post = GeneratedPost(
+                topic=topic.title,
+                hook=slides[0]["title"],
+                body="\n".join(s["content"] for s in slides[1:5]),
+                cta=slides[-1].get("content", ""),
+                hashtags=[],
+                image_query="",
+                post_type="carousel_script",
+                full_text="\n\n".join(f"**{s['title']}**\n{s['content']}" for s in slides),
+                word_count=200,
+            )
+            selected, _ = await self.approval_bot.request_version_selection(
+                posts=[placeholder_post], topic=f"[CAROUSEL] {topic.title}", image_path=None
+            )
+            if selected is None:
+                await self.approval_bot.send_notification("📭 Carousel skipped.")
+                return
+
+            caption = f"{slides[0]['title']}\n\n" + "\n".join(
+                f"Slide {s['slide']}: {s['title']}" for s in slides[1:]
+            ) + f"\n\nFollow for weekly insights on {', '.join(config.your_niche[:3])}."
+
+            result = await self.publisher.publish_document(caption, pdf_path, topic.title)
+            if result.success:
+                self._mark_topic_used(topic)
+                self._state["posts_published"] = self._state.get("posts_published", 0) + 1
+                self._state["posts_this_week"] = self._state.get("posts_this_week", 0) + 1
+                self._state["last_post_at"] = datetime.now(timezone.utc).isoformat()
+                self._save_recent_post(topic.title, result.post_url)
+                self._save_state()
+                await self.approval_bot.send_notification(
+                    f"📊 *Carousel published!*\n🔗 {result.post_url or 'Check your LinkedIn feed'}"
+                )
+            else:
+                await self.approval_bot.send_notification(f"❌ Carousel failed: `{result.error}`")
+
+        except ImportError:
+            logger.error("reportlab not installed — falling back to regular post")
+            await self._run_regular_pipeline(topic)
+        except Exception as e:
+            logger.error(f"Carousel pipeline error: {e} — falling back to regular post")
+            await self._run_regular_pipeline(topic)
+        finally:
+            if pdf_path and Path(pdf_path).exists():
+                Path(pdf_path).unlink(missing_ok=True)
+
+    # ── Publish helper ────────────────────────────────────────────────────────
+
+    async def _publish_and_notify(
+        self, text: str, image_path: Optional[str], topic: Topic
+    ) -> None:
+        result = await self.publisher.publish(text=text, image_path=image_path)
+        if result.success:
+            self._mark_topic_used(topic)
+            self._state["posts_published"] = self._state.get("posts_published", 0) + 1
+            self._state["posts_this_week"] = self._state.get("posts_this_week", 0) + 1
+            self._state["last_post_at"] = datetime.now(timezone.utc).isoformat()
+            self._save_recent_post(topic.title, result.post_url)
+            self._save_state()
+            await self.approval_bot.send_notification(
+                f"🎉 *Post published!*\n🔗 {result.post_url or 'Check your LinkedIn feed'}\n\n"
+                f"📌 _{topic.title[:80]}_"
+            )
+            if config.enable_first_comment and result.post_id:
+                await self._post_first_comment(text, result.post_id)
+        else:
+            await self.approval_bot.send_notification(f"❌ Publish failed:\n`{result.error}`")
 
     # ── First comment ─────────────────────────────────────────────────────────
 
@@ -188,16 +303,13 @@ class Orchestrator:
             comment = await self.content_writer.generate_first_comment(post_text)
             success = await self.publisher.post_comment(post_id, comment)
             if success:
-                logger.info(f"First comment posted: {comment[:80]}")
                 await self.approval_bot.send_notification(
                     f"💬 *First comment posted!*\n_{comment[:200]}_"
                 )
-            else:
-                logger.warning("First comment failed — skipping")
         except Exception as e:
             logger.warning(f"First comment error (non-fatal): {e}")
 
-    # ── Performance reminder ──────────────────────────────────────────────────
+    # ── Performance reminders ─────────────────────────────────────────────────
 
     def _save_recent_post(self, topic: str, url: Optional[str]) -> None:
         recent = self._state.setdefault("recent_posts", [])
@@ -207,36 +319,26 @@ class Orchestrator:
             "published_at": datetime.now(timezone.utc).isoformat(),
             "reminder_sent": False,
         })
-        self._state["recent_posts"] = recent[-10:]  # keep last 10
-        self._save_state()
+        self._state["recent_posts"] = recent[-10:]
 
     async def send_performance_reminders(self) -> None:
-        """Send Telegram reminders for posts that are 20-28 hours old."""
         recent = self._state.get("recent_posts", [])
         now = datetime.now(timezone.utc)
         updated = False
-
         for post in recent:
             if post.get("reminder_sent"):
                 continue
             published = datetime.fromisoformat(post["published_at"])
             age_hours = (now - published).total_seconds() / 3600
-
             if 20 <= age_hours <= 28:
-                url_line = f"🔗 {post['url']}" if post['url'] else "🔗 Check your LinkedIn feed"
+                url_line = f"🔗 {post['url']}" if post["url"] else "🔗 Check your LinkedIn feed"
                 await self.approval_bot.send_notification(
-                    f"📊 *Performance Check*\n"
-                    f"━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                    f"Your post from ~24h ago:\n"
-                    f"📌 _{post['topic'][:80]}_\n\n"
-                    f"{url_line}\n\n"
-                    f"Check likes, comments & impressions!\n"
-                    f"Reply `/stats <likes> <comments>` to track it."
+                    f"📊 *Performance Check*\n━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"Your post from ~24h ago:\n📌 _{post['topic'][:80]}_\n\n"
+                    f"{url_line}\n\nCheck likes, comments & impressions!"
                 )
                 post["reminder_sent"] = True
                 updated = True
-                logger.info(f"Performance reminder sent for: {post['topic'][:60]}")
-
         if updated:
             self._save_state()
 
@@ -244,32 +346,23 @@ class Orchestrator:
 
     async def _maybe_send_weekly_report(self) -> None:
         today_str = date.today().isoformat()
-        today_weekday = datetime.now(timezone.utc).weekday()  # 6 = Sunday
-
-        if today_weekday != 6:
+        if datetime.now(timezone.utc).weekday() != 6:
             return
         if self._state.get("last_weekly_report") == today_str:
             return
-
         posts_total = self._state.get("posts_published", 0)
         posts_this_week = self._state.get("posts_this_week", 0)
         last_post = self._state.get("last_post_at", "Never")
-        last_post_display = last_post[:10] if last_post != "Never" else "Never"
-
-        report = (
-            f"📊 *Weekly LinkedIn Report*\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"📝 Posts this week: *{posts_this_week}*\n"
-            f"📈 Total posts ever: *{posts_total}*\n"
-            f"🕐 Last posted: *{last_post_display}*\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"✅ Agent running smoothly!"
+        await self.approval_bot.send_notification(
+            f"📊 *Weekly Report*\n━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"📝 This week: *{posts_this_week}* posts\n"
+            f"📈 Total ever: *{posts_total}* posts\n"
+            f"🕐 Last posted: *{last_post[:10] if last_post != 'Never' else 'Never'}*\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━\n✅ Agent running strong!"
         )
-        await self.approval_bot.send_notification(report)
         self._state["last_weekly_report"] = today_str
         self._state["posts_this_week"] = 0
         self._save_state()
-        logger.info("Weekly analytics report sent")
 
     # ── Topic selection ───────────────────────────────────────────────────────
 
@@ -278,7 +371,6 @@ class Orchestrator:
         for topic in topics:
             if topic.title.lower() not in used_titles:
                 return topic
-        logger.info("All fetched topics were recently used — resetting topic history")
         self._state["used_topics"] = []
         return topics[0]
 
@@ -294,18 +386,15 @@ class Orchestrator:
             try:
                 return json.loads(STATE_FILE.read_text())
             except (json.JSONDecodeError, OSError) as e:
-                logger.warning(f"Could not load state file: {e} — starting fresh")
-        return {"used_topics": [], "posts_published": 0, "posts_this_week": 0}
+                logger.warning(f"State load failed: {e}")
+        return {"used_topics": [], "posts_published": 0, "posts_this_week": 0, "recent_posts": []}
 
     def _save_state(self) -> None:
         try:
             STATE_FILE.write_text(json.dumps(self._state, indent=2))
-            logger.debug("State saved")
         except OSError as e:
-            logger.warning(f"Could not save state: {e}")
+            logger.warning(f"State save failed: {e}")
 
-
-# ── Entry point ───────────────────────────────────────────────────────────────
 
 async def main():
     orchestrator = Orchestrator()

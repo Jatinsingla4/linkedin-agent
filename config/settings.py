@@ -52,6 +52,9 @@ class Config:
     approval_timeout_hours: int = field(default_factory=lambda: int(_optional("APPROVAL_TIMEOUT_HOURS", "12")))
     generate_versions: int = field(default_factory=lambda: int(_optional("GENERATE_VERSIONS", "2")))
     enable_first_comment: bool = field(default_factory=lambda: _optional("ENABLE_FIRST_COMMENT", "true").lower() == "true")
+    personal_story_day: int = field(default_factory=lambda: int(_optional("PERSONAL_STORY_DAY", "3")))  # 0=Mon…6=Sun; 3=Thu
+    poll_day: int = field(default_factory=lambda: int(_optional("POLL_DAY", "6")))                      # 6=Sun
+    carousel_day: int = field(default_factory=lambda: int(_optional("CAROUSEL_DAY", "5")))              # 5=Sat
 
     # ── Personal Branding ────────────────────────────────────
     your_name: str = field(default_factory=lambda: _optional("YOUR_NAME", "Jatin"))

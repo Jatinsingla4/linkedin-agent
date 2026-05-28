@@ -74,6 +74,90 @@ class ApprovalBot:
             # Don't block the pipeline — notify and auto-approve
             return ApprovalResult(status=ApprovalStatus.APPROVED)
 
+    async def request_poll_approval(
+        self, intro_text: str, question: str, options: list[str], topic: str
+    ) -> bool:
+        """Send poll preview to Telegram, return True if approved."""
+        options_text = "\n".join(f"  {i+1}. {o}" for i, o in enumerate(options))
+        keyboard = InlineKeyboardMarkup([[
+            InlineKeyboardButton("✅ Post Poll", callback_data=APPROVE_CALLBACK),
+            InlineKeyboardButton("❌ Skip", callback_data=REJECT_CALLBACK),
+        ]])
+        msg = await self.bot.send_message(
+            chat_id=self.chat_id,
+            text=(
+                f"🗳️ *Poll Preview*\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"📌 Topic: _{self._escape_md(topic[:80])}_\n\n"
+                f"*Intro:* {self._escape_md(intro_text[:300])}\n\n"
+                f"*Question:* {self._escape_md(question)}\n\n"
+                f"{self._escape_md(options_text)}\n\n"
+                f"Auto-skips in {config.approval_timeout_hours}h."
+            ),
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=keyboard,
+        )
+        approval = await self._wait_for_response(msg.message_id, intro_text)
+        return approval.status == ApprovalStatus.APPROVED
+
+    async def request_calendar_approval(self, topics: list[str]) -> list[str]:
+        """Send weekly topic plan to Telegram, return approved topics list."""
+        topics_text = "\n".join(f"  {i+1}. {t}" for i, t in enumerate(topics))
+        keyboard = InlineKeyboardMarkup([[
+            InlineKeyboardButton("✅ Approve All", callback_data=APPROVE_CALLBACK),
+            InlineKeyboardButton("❌ Skip Week", callback_data=REJECT_CALLBACK),
+        ]])
+        msg = await self.bot.send_message(
+            chat_id=self.chat_id,
+            text=(
+                f"📅 *This Week's Content Plan*\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"{self._escape_md(topics_text)}\n\n"
+                f"Tap ✅ to approve or reply `/skip 2,4` to remove specific topics.\n"
+                f"Auto-approves in 30 min."
+            ),
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=keyboard,
+        )
+        # Wait max 30 min for calendar approval
+        timeout_saved = config.approval_timeout_hours
+        elapsed = 0
+        last_update_id = -1
+        approved_topics = list(topics)
+
+        while elapsed < 1800:  # 30 min
+            await asyncio.sleep(10)
+            elapsed += 10
+            updates = await self._get_updates(last_update_id)
+            for update in updates:
+                last_update_id = max(last_update_id, update.update_id)
+                if update.callback_query:
+                    cq = update.callback_query
+                    if cq.message and cq.message.message_id == msg.message_id:
+                        if cq.data == APPROVE_CALLBACK:
+                            await self.send_notification(f"✅ Content plan approved! {len(approved_topics)} topics queued.")
+                            return approved_topics
+                        elif cq.data == REJECT_CALLBACK:
+                            await self.send_notification("❌ Content plan skipped.")
+                            return []
+                if update.message and update.message.chat_id == int(self.chat_id):
+                    text = (update.message.text or "").strip()
+                    if text.lower().startswith("/skip "):
+                        try:
+                            skip_nums = [int(x.strip()) - 1 for x in text[6:].split(",")]
+                            approved_topics = [t for i, t in enumerate(topics) if i not in skip_nums]
+                            await self.send_notification(
+                                f"✅ Plan updated! {len(approved_topics)} topics queued:\n" +
+                                "\n".join(f"• {t[:60]}" for t in approved_topics)
+                            )
+                            return approved_topics
+                        except Exception:
+                            pass
+
+        # Auto-approve after timeout
+        await self.send_notification(f"⏰ Auto-approved {len(approved_topics)} topics for this week!")
+        return approved_topics
+
     async def get_topic_suggestion(self) -> Optional[str]:
         """Check Telegram for a recent /topic <text> command (within last hour)."""
         try:
