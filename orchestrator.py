@@ -152,6 +152,9 @@ class Orchestrator:
                     f"📌 Topic: _{topic.title[:80]}_"
                 )
 
+                # Save post for performance reminder
+                self._save_recent_post(topic.title, result.post_url)
+
                 # ── Step 8: Auto first comment ─────────────────────────────
                 if config.enable_first_comment and result.post_id:
                     await self._post_first_comment(final_text, result.post_id)
@@ -193,6 +196,49 @@ class Orchestrator:
                 logger.warning("First comment failed — skipping")
         except Exception as e:
             logger.warning(f"First comment error (non-fatal): {e}")
+
+    # ── Performance reminder ──────────────────────────────────────────────────
+
+    def _save_recent_post(self, topic: str, url: Optional[str]) -> None:
+        recent = self._state.setdefault("recent_posts", [])
+        recent.append({
+            "topic": topic[:100],
+            "url": url or "",
+            "published_at": datetime.now(timezone.utc).isoformat(),
+            "reminder_sent": False,
+        })
+        self._state["recent_posts"] = recent[-10:]  # keep last 10
+        self._save_state()
+
+    async def send_performance_reminders(self) -> None:
+        """Send Telegram reminders for posts that are 20-28 hours old."""
+        recent = self._state.get("recent_posts", [])
+        now = datetime.now(timezone.utc)
+        updated = False
+
+        for post in recent:
+            if post.get("reminder_sent"):
+                continue
+            published = datetime.fromisoformat(post["published_at"])
+            age_hours = (now - published).total_seconds() / 3600
+
+            if 20 <= age_hours <= 28:
+                url_line = f"🔗 {post['url']}" if post['url'] else "🔗 Check your LinkedIn feed"
+                await self.approval_bot.send_notification(
+                    f"📊 *Performance Check*\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"Your post from ~24h ago:\n"
+                    f"📌 _{post['topic'][:80]}_\n\n"
+                    f"{url_line}\n\n"
+                    f"Check likes, comments & impressions!\n"
+                    f"Reply `/stats <likes> <comments>` to track it."
+                )
+                post["reminder_sent"] = True
+                updated = True
+                logger.info(f"Performance reminder sent for: {post['topic'][:60]}")
+
+        if updated:
+            self._save_state()
 
     # ── Weekly analytics ──────────────────────────────────────────────────────
 
