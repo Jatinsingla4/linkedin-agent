@@ -41,3 +41,12 @@ jobs:
           YOUR_COMPANY: "Grapes Worldwide"
           YOUR_LINKEDIN_NICHE: "marketing,branding,AI,FMCG,agency life,startup"
         run: python performance_check.py
+
+      - name: Save agent state back to repo
+        if: always()
+        run: |
+          git config user.name "LinkedIn Agent Bot"
+          git config user.email "agent@linkedin-bot.com"
+          git add agent_state.json
+          git diff --staged --quiet || git commit -m "chore: update agent state [skip ci]"
+          git push || true

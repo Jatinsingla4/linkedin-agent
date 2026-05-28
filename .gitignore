@@ -6,7 +6,6 @@
 
 # ── Agent runtime files ───────────────────────────────────────
 agent.log
-agent_state.json
 *.log
 
 # ── Temp image files ──────────────────────────────────────────
