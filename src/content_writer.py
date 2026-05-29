@@ -61,7 +61,7 @@ class ContentWriter:
             generation_config=genai.GenerationConfig(
                 temperature=0.85,        # Creative but not unhinged
                 top_p=0.92,
-                max_output_tokens=2048,
+                max_output_tokens=4096,
             )
         )
 
@@ -110,7 +110,7 @@ Return ONLY valid JSON:
 }}"""
         response = await self.model.generate_content_async(
             prompt,
-            generation_config=genai.GenerationConfig(temperature=0.9, max_output_tokens=2048),
+            generation_config=genai.GenerationConfig(temperature=0.9, max_output_tokens=4096),
         )
         return self._parse_response(response.text.strip(), topic)
 
