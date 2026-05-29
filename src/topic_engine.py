@@ -21,25 +21,25 @@ logger = logging.getLogger(__name__)
 
 # ── RSS feeds — no API key needed ────────────────────────────────────────────
 RSS_FEEDS = [
-    # Marketing & Branding
-    "https://feeds.feedburner.com/MarketingLand",
+    # Marketing & Branding (agency/brand focused)
     "https://blog.hubspot.com/marketing/rss.xml",
     "https://contentmarketinginstitute.com/feed/",
     "https://www.convinceandconvert.com/feed/",
-    # Business & Startups
+    "https://www.marketingweek.com/feed/",
+    "https://adage.com/rss.xml",
+    # Business & Leadership
     "https://feeds.harvardbusiness.org/harvardbusiness/",
-    "https://feeds.inc.com/home/updates",
     "https://www.fastcompany.com/latest/rss",
-    # AI & Tech
-    "https://techcrunch.com/feed/",
-    "https://www.theverge.com/rss/index.xml",
+    # AI in Marketing (not pure tech)
+    "https://blog.hootsuite.com/feed/",
+    "https://sproutsocial.com/insights/feed/",
 ]
 
 # ── Reddit communities relevant to your niche ────────────────────────────────
 REDDIT_SUBREDDITS = [
     "marketing", "branding", "digitalmarketing",
-    "startups", "entrepreneur", "socialmedia",
-    "artificial", "MachineLearning",
+    "advertising", "socialmedia", "entrepreneur",
+    "startups", "content_marketing",
 ]
 
 
@@ -198,14 +198,24 @@ class TopicEngine:
         evergreen = [
             "Why most brand campaigns fail in the first 90 days",
             "The real difference between marketing and branding",
-            "How AI is changing creative agencies in 2025",
-            "5 lessons from FMCG brands that built cult followings",
+            "How AI is changing creative agencies in India",
+            "What FMCG brands do differently to build cult followings",
             "What clients really want vs what agencies think they want",
             "The underrated power of consistency in brand building",
             "Why storytelling beats specs every time in product marketing",
             "How to measure brand health beyond just sales numbers",
             "The agency-client relationship: what makes it actually work",
             "Building a personal brand when you work behind the scenes",
+            "What I learned pitching 50+ campaigns to FMCG clients",
+            "Why most social media strategies fail for consumer brands",
+            "The gap between what brands say and what consumers hear",
+            "How AI tools are changing the daily life of a marketer",
+            "Why brand consistency matters more than creative brilliance",
+            "The one thing FMCG brands always get wrong on social media",
+            "What agency life teaches you that no MBA can",
+            "Why the best campaigns start with a single human insight",
+            "How to build a brand people talk about without being asked",
+            "The truth about viral marketing: luck vs strategy",
         ]
         random.shuffle(evergreen)
         return [
