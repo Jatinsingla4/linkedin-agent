@@ -213,7 +213,11 @@ class ApprovalBot:
             text=(
                 f"👆 *Pick a version to post*\n"
                 f"📌 Topic: _{self._escape_md(topic[:80])}_\n\n"
-                f"Or reply `/edit <your text>` to write your own."
+                f"━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"*Commands:*\n"
+                f"✏️ `/edit <poora post text>` — tumhara likha hua post directly publish hoga\n"
+                f"💡 `/topic <topic idea>` — agent kal is topic pe post banayega\n"
+                f"❌ Skip karna ho toh neeche button dabao"
             ),
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=keyboard,
@@ -290,7 +294,8 @@ class ApprovalBot:
             f"📌 *Topic:* {self._escape_md(topic[:80])}\n\n"
             f"📝 *Post:*\n{self._escape_md(post_text)}\n\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"Reply `/edit <new text>` to modify before posting.\n"
+            f"✏️ `/edit <poora post text>` — apna version post karo\n"
+            f"💡 `/topic <idea>` — kal ke liye topic suggest karo\n"
             f"Auto-skips in {config.approval_timeout_hours}h if no response."
         )
 
