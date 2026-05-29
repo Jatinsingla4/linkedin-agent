@@ -48,6 +48,18 @@ class ApprovalBot:
         self.bot = Bot(token=config.telegram_bot_token)
         self.chat_id = config.telegram_chat_id
         self._pending_message_id: Optional[int] = None
+        self._start_update_id: int = -1  # set on first use to ignore old messages
+
+    async def _get_start_offset(self) -> int:
+        """Fetch the latest update_id so we ignore all messages sent before this run."""
+        try:
+            updates = await self.bot.get_updates(timeout=2, limit=100,
+                                                  allowed_updates=["message", "callback_query"])
+            if updates:
+                return updates[-1].update_id
+        except TelegramError:
+            pass
+        return -1
 
     # ── Public interface ──────────────────────────────────────────────────────
 
@@ -229,7 +241,8 @@ class ApprovalBot:
     ) -> tuple[Optional[object], Optional[str]]:
         timeout_seconds = config.approval_timeout_hours * 3600
         elapsed = 0
-        last_update_id = -1
+        # Ignore all messages that arrived before this run started
+        last_update_id = await self._get_start_offset()
 
         while elapsed < timeout_seconds:
             await asyncio.sleep(5)
@@ -343,7 +356,8 @@ class ApprovalBot:
         timeout_seconds = config.approval_timeout_hours * 3600
         poll_interval = 5  # seconds
         elapsed = 0
-        last_update_id = -1
+        # Ignore all messages that arrived before this run started
+        last_update_id = await self._get_start_offset()
 
         logger.info(
             f"Waiting for Telegram approval (timeout: {config.approval_timeout_hours}h)..."
