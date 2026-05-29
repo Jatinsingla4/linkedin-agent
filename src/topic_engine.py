@@ -30,10 +30,12 @@ RSS_FEEDS = [
     # Business & Leadership
     "https://feeds.harvardbusiness.org/harvardbusiness/",
     "https://www.fastcompany.com/latest/rss",
-    # AI in Marketing & Business (not pure SEO/tech)
+    # AI in Marketing & Business
     "https://blog.hootsuite.com/feed/",
-    "https://sproutsocial.com/insights/feed/",
     "https://www.marketingaiinstitute.com/blog/rss.xml",
+    # AI & Tech (for AI trends Jatin can relate to marketing)
+    "https://techcrunch.com/feed/",
+    "https://venturebeat.com/feed/",
 ]
 
 # ── Reddit communities relevant to your niche ────────────────────────────────
