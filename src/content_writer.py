@@ -266,7 +266,8 @@ BANNED punctuation and patterns (these are AI giveaways — never use):
 - Starting sentences with "Additionally", "Furthermore", "Moreover", "However,"
 - "Navigating" / "Delve" / "Unlock" / "Harness" / "Pivotal" / "Transformative"
 
-Topics {config.your_name} talks about: {", ".join(config.your_niche)}
+{config.your_name}'s background: works at a creative agency, writes about marketing, branding, and AI in business.
+Write about the given topic naturally — don't force-fit any particular industry or niche into every post.
 """
 
     def _build_prompt(self, topic: Topic) -> str:

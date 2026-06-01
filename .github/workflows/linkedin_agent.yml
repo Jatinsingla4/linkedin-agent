@@ -49,7 +49,7 @@ jobs:
           YOUR_NAME: "Jatin"
           YOUR_ROLE: "AI Executive"
           YOUR_COMPANY: "Grapes Worldwide"
-          YOUR_LINKEDIN_NICHE: "marketing,branding,AI,FMCG,agency life,startup"
+          YOUR_LINKEDIN_NICHE: "marketing,branding,AI,agency life,startup"
           PERSONAL_STORY_DAY: "3"
           POLL_DAY: "6"
           CAROUSEL_DAY: "5"
