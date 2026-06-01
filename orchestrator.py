@@ -67,17 +67,17 @@ class Orchestrator:
         await self.send_performance_reminders()
 
         try:
-            # Get topic (from queue or fresh)
-            topic = await self._get_topic()
+            # Get topic (from queue or fresh); article_url set if /url command was used
+            topic, article_url = await self._get_topic()
 
             if post_type == "poll":
                 await self._run_poll_pipeline(topic)
             elif post_type == "carousel":
                 await self._run_carousel_pipeline(topic)
             elif post_type == "story":
-                await self._run_story_pipeline(topic)
+                await self._run_story_pipeline(topic, article_url)
             else:
-                await self._run_regular_pipeline(topic)
+                await self._run_regular_pipeline(topic, article_url)
 
         except Exception as e:
             logger.exception(f"Pipeline error: {e}")
@@ -97,14 +97,24 @@ class Orchestrator:
 
     # ── Topic resolution ──────────────────────────────────────────────────────
 
-    async def _get_topic(self) -> Topic:
-        # Check Telegram /topic suggestion first
+    async def _get_topic(self) -> tuple[Topic, Optional[str]]:
+        """Returns (topic, article_url_or_None)."""
+        # Check /url command first — user wants a post from a specific article
+        url_suggestion = await self.approval_bot.get_url_suggestion()
+        if url_suggestion:
+            await self.approval_bot.send_notification(
+                f"🔗 Generating post from your article:\n_{url_suggestion[:80]}_"
+            )
+            topic = Topic(title=f"Article: {url_suggestion[:60]}", source="url", relevance_score=10.0)
+            return topic, url_suggestion
+
+        # Check Telegram /topic suggestion
         topic_suggestion = await self.approval_bot.get_topic_suggestion()
         if topic_suggestion:
             await self.approval_bot.send_notification(
                 f"📌 Using your suggested topic:\n_{topic_suggestion}_"
             )
-            return Topic(title=topic_suggestion, source="telegram", relevance_score=10.0)
+            return Topic(title=topic_suggestion, source="telegram", relevance_score=10.0), None
 
         # Check content calendar queue
         queue = self._state.get("content_queue", [])
@@ -114,41 +124,54 @@ class Orchestrator:
             self._save_state()
             logger.info(f"Using queued topic: {title}")
             await self.approval_bot.send_notification(f"📅 Using this week's planned topic:\n_{title}_")
-            return Topic(title=title, source="calendar", relevance_score=9.0)
+            return Topic(title=title, source="calendar", relevance_score=9.0), None
 
         # Auto-fetch
         topics = await self.topic_engine.get_topics(count=25)
-        return self._pick_topic(topics)
+        return self._pick_topic(topics), None
 
     # ── Regular pipeline ──────────────────────────────────────────────────────
 
-    async def _run_regular_pipeline(self, topic: Topic) -> None:
+    async def _run_regular_pipeline(self, topic: Topic, article_url: Optional[str] = None) -> None:
         image_path: Optional[str] = None
+        user_image_path: Optional[str] = None
         try:
             versions = config.generate_versions
             logger.info(f"Generating {versions} versions for: {topic.title[:60]}")
-            posts = await self.content_writer.generate_multiple_posts(topic, count=versions)
+
+            # If URL provided, generate from article; otherwise normal generation
+            if article_url:
+                article_text = await self._fetch_article_text(article_url)
+                post = await self.content_writer.generate_post_from_article(article_url, article_text)
+                posts = [post]
+            else:
+                posts = await self.content_writer.generate_multiple_posts(topic, count=versions)
 
             fetched = await self.image_fetcher.fetch_image(posts[0].image_query)
             image_path = fetched.file_path if fetched else None
 
-            selected_post, edited_text = await self.approval_bot.request_version_selection(
+            selected_post, edited_text, user_image_path = await self.approval_bot.request_version_selection(
                 posts=posts, topic=topic.title, image_path=image_path
             )
             if selected_post is None:
                 await self.approval_bot.send_notification("📭 Skipped. Next time!")
                 return
 
+            # User's own image takes priority over Unsplash
+            final_image = user_image_path or image_path
             final_text = edited_text or selected_post.full_text
-            await self._publish_and_notify(final_text, image_path, topic)
+            await self._publish_and_notify(final_text, final_image, topic)
         finally:
             if image_path:
                 ImageFetcher.cleanup(image_path)
+            if user_image_path:
+                ImageFetcher.cleanup(user_image_path)
 
     # ── Personal Story pipeline ───────────────────────────────────────────────
 
-    async def _run_story_pipeline(self, topic: Topic) -> None:
+    async def _run_story_pipeline(self, topic: Topic, article_url: Optional[str] = None) -> None:
         image_path: Optional[str] = None
+        user_image_path: Optional[str] = None
         try:
             logger.info(f"Generating personal story for: {topic.title[:60]}")
             post = await self.content_writer.generate_personal_story(topic)
@@ -157,18 +180,21 @@ class Orchestrator:
             fetched = await self.image_fetcher.fetch_image(post.image_query)
             image_path = fetched.file_path if fetched else None
 
-            selected_post, edited_text = await self.approval_bot.request_version_selection(
+            selected_post, edited_text, user_image_path = await self.approval_bot.request_version_selection(
                 posts=posts, topic=f"[STORY] {topic.title}", image_path=image_path
             )
             if selected_post is None:
                 await self.approval_bot.send_notification("📭 Story skipped.")
                 return
 
+            final_image = user_image_path or image_path
             final_text = edited_text or selected_post.full_text
-            await self._publish_and_notify(final_text, image_path, topic)
+            await self._publish_and_notify(final_text, final_image, topic)
         finally:
             if image_path:
                 ImageFetcher.cleanup(image_path)
+            if user_image_path:
+                ImageFetcher.cleanup(user_image_path)
 
     # ── Poll pipeline ─────────────────────────────────────────────────────────
 
@@ -238,7 +264,7 @@ class Orchestrator:
                 full_text="\n\n".join(f"**{s['title']}**\n{s['content']}" for s in slides),
                 word_count=200,
             )
-            selected, _ = await self.approval_bot.request_version_selection(
+            selected, _, _img = await self.approval_bot.request_version_selection(
                 posts=[placeholder_post], topic=f"[CAROUSEL] {topic.title}", image_path=None
             )
             if selected is None:
@@ -272,6 +298,29 @@ class Orchestrator:
         finally:
             if pdf_path and Path(pdf_path).exists():
                 Path(pdf_path).unlink(missing_ok=True)
+
+    # ── Article fetcher ───────────────────────────────────────────────────────
+
+    async def _fetch_article_text(self, url: str) -> str:
+        """Fetch an article URL and return clean plain text (first 3000 chars)."""
+        import re
+        import aiohttp
+        try:
+            connector = aiohttp.TCPConnector(ssl=False)
+            async with aiohttp.ClientSession(connector=connector) as session:
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=15),
+                                       headers={"User-Agent": "Mozilla/5.0"}) as resp:
+                    html = await resp.text()
+            # Strip scripts, styles, tags
+            html = re.sub(r"<script[^>]*>.*?</script>", " ", html, flags=re.DOTALL | re.IGNORECASE)
+            html = re.sub(r"<style[^>]*>.*?</style>", " ", html, flags=re.DOTALL | re.IGNORECASE)
+            html = re.sub(r"<[^>]+>", " ", html)
+            text = re.sub(r"\s+", " ", html).strip()
+            logger.info(f"Fetched article ({len(text)} chars): {url[:60]}")
+            return text[:3000]
+        except Exception as e:
+            logger.warning(f"Article fetch failed: {e}")
+            return ""
 
     # ── Publish helper ────────────────────────────────────────────────────────
 

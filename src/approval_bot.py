@@ -193,13 +193,37 @@ class ApprovalBot:
             logger.debug(f"Could not check topic suggestion: {e}")
         return None
 
+    async def get_url_suggestion(self) -> Optional[str]:
+        """Check Telegram for a recent /url <link> command (within last hour)."""
+        try:
+            updates = await self.bot.get_updates(
+                timeout=2,
+                allowed_updates=["message"],
+                limit=20,
+            )
+            cutoff = datetime.now(timezone.utc).timestamp() - 3600
+            for update in reversed(updates):
+                if update.message and update.message.chat_id == int(self.chat_id):
+                    if update.message.date.timestamp() < cutoff:
+                        continue
+                    text = (update.message.text or "").strip()
+                    if text.lower().startswith("/url "):
+                        url = text[5:].strip()
+                        if url.startswith("http"):
+                            logger.info(f"Found Telegram URL suggestion: {url}")
+                            return url
+        except TelegramError as e:
+            logger.debug(f"Could not check URL suggestion: {e}")
+        return None
+
     async def request_version_selection(
         self,
         posts: list,
         topic: str,
         image_path: Optional[str] = None,
-    ) -> tuple[Optional[object], Optional[str]]:
-        """Send N post versions to Telegram, wait for user to pick one."""
+    ) -> tuple[Optional[object], Optional[str], Optional[str]]:
+        """Send N post versions to Telegram, wait for user to pick one.
+        Returns (selected_post, edited_text, user_image_path)."""
         # Send each version as a separate preview message
         for i, post in enumerate(posts, 1):
             preview = self._escape_md(post.full_text[:700])
@@ -227,8 +251,9 @@ class ApprovalBot:
                 f"📌 Topic: _{self._escape_md(topic[:80])}_\n\n"
                 f"━━━━━━━━━━━━━━━━━━━━━━\n"
                 f"*Commands:*\n"
-                f"✏️ `/edit <poora post text>` — tumhara likha hua post directly publish hoga\n"
-                f"💡 `/topic <topic idea>` — agent kal is topic pe post banayega\n"
+                f"✏️ `/edit <poora post text>` — apna version post karo\n"
+                f"📸 *Photo bhejo* — apni image use hogi post mein\n"
+                f"💡 `/topic <idea>` — kal ke liye topic suggest karo\n"
                 f"❌ Skip karna ho toh neeche button dabao"
             ),
             parse_mode=ParseMode.MARKDOWN,
@@ -238,11 +263,11 @@ class ApprovalBot:
 
     async def _wait_for_version_response(
         self, message_id: int, posts: list
-    ) -> tuple[Optional[object], Optional[str]]:
+    ) -> tuple[Optional[object], Optional[str], Optional[str]]:
         timeout_seconds = config.approval_timeout_hours * 3600
         elapsed = 0
-        # Ignore all messages that arrived before this run started
         last_update_id = await self._get_start_offset()
+        user_image_path: Optional[str] = None  # set if user sends a photo
 
         while elapsed < timeout_seconds:
             await asyncio.sleep(5)
@@ -257,25 +282,43 @@ class ApprovalBot:
                     if cq.message and cq.message.message_id == message_id:
                         if cq.data == REJECT_CALLBACK:
                             await self.send_notification("❌ Skipped. Next post coming soon!")
-                            return None, None
+                            return None, None, None
                         for i, post in enumerate(posts):
                             if cq.data == f"v{i}":
-                                await self.send_notification(f"✅ Version {i + 1} selected! Posting to LinkedIn...")
-                                return post, None
+                                img_note = " (apni photo ke saath!)" if user_image_path else ""
+                                await self.send_notification(f"✅ Version {i + 1} selected{img_note} Posting to LinkedIn...")
+                                return post, None, user_image_path
 
                 if update.message and update.message.chat_id == int(self.chat_id):
+                    # User sent a photo — store it for use with whichever version they pick
+                    if update.message.photo:
+                        try:
+                            photo = update.message.photo[-1]  # largest size
+                            tg_file = await self.bot.get_file(photo.file_id)
+                            import tempfile
+                            tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg", prefix="user_img_")
+                            tmp.close()
+                            await tg_file.download_to_drive(tmp.name)
+                            user_image_path = tmp.name
+                            logger.info(f"User image received: {tmp.name}")
+                            await self.send_notification("📸 Photo mil gaya! Ab version select karo.")
+                        except Exception as e:
+                            logger.warning(f"Failed to download user photo: {e}")
+                        continue
+
                     text = (update.message.text or "").strip()
                     if text.lower().startswith("/edit "):
                         new_text = text[6:].strip()
                         if new_text:
-                            await self.send_notification("✏️ Custom version received! Posting...")
-                            return posts[0], new_text
+                            img_note = " (apni photo ke saath!)" if user_image_path else ""
+                            await self.send_notification(f"✏️ Custom version received{img_note} Posting...")
+                            return posts[0], new_text, user_image_path
                     if text in ("❌", "/reject", "no", "skip"):
                         await self.send_notification("❌ Skipped.")
-                        return None, None
+                        return None, None, None
 
         await self.send_notification(f"⏰ Timed out after {config.approval_timeout_hours}h — skipped.")
-        return None, None
+        return None, None, None
 
     async def send_notification(self, message: str) -> None:
         """Send a simple notification message (no approval needed)."""

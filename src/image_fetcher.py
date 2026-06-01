@@ -100,32 +100,31 @@ class ImageFetcher:
                 if resp.status != 200:
                     logger.warning(f"Unsplash returned {resp.status}")
                     return None
-
                 data = await resp.json()
 
-        results = data.get("results", [])
-        if not results:
-            logger.warning(f"Unsplash: no results for '{query}'")
-            return None
+            results = data.get("results", [])
+            if not results:
+                logger.warning(f"Unsplash: no results for '{query}'")
+                return None
 
-        # Pick best result (highest likes = community-validated quality)
-        best = max(results, key=lambda x: x.get("likes", 0))
-        image_url = best["urls"]["regular"]  # 1080px wide
-        photographer = best["user"]["name"]
-        alt_text = best.get("alt_description") or query
+            # Pick best result (highest likes = community-validated quality)
+            best = max(results, key=lambda x: x.get("likes", 0))
+            image_url = best["urls"]["regular"]  # 1080px wide
+            photographer = best["user"]["name"]
+            alt_text = best.get("alt_description") or query
 
-        # Download to temp file
-        file_path = await self._download_image(session, image_url)
-        if not file_path:
-            return None
+            # Download inside session so it's still open
+            file_path = await self._download_image(session, image_url)
+            if not file_path:
+                return None
 
-        logger.info(f"ImageFetcher: fetched from Unsplash — '{query}' by {photographer}")
-        return FetchedImage(
-            file_path=file_path,
-            unsplash_url=image_url,
-            photographer=photographer,
-            alt_text=alt_text,
-        )
+            logger.info(f"ImageFetcher: fetched from Unsplash — '{query}' by {photographer}")
+            return FetchedImage(
+                file_path=file_path,
+                unsplash_url=image_url,
+                photographer=photographer,
+                alt_text=alt_text,
+            )
 
     # ── Fallback ──────────────────────────────────────────────────────────────
 

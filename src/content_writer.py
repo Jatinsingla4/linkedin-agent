@@ -186,6 +186,39 @@ Return ONLY a valid JSON array of strings:
         raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", response.text.strip(), flags=re.MULTILINE)
         return json.loads(raw)
 
+    async def generate_post_from_article(self, url: str, article_text: str) -> "GeneratedPost":
+        """Generate a LinkedIn post based on an article URL + its content."""
+        from src.topic_engine import Topic
+        prompt = f"""{self._system_context}
+
+Article URL: {url}
+
+Article content (excerpt):
+{article_text[:2000]}
+
+Read the article above and write a LinkedIn post sharing Jatin's take on it.
+Rules:
+- Don't summarise the article — share YOUR reaction, opinion, or a lesson it sparked
+- Reference "I read something today" or "Came across this" to make it feel natural
+- One specific insight or disagreement from the article, in Jatin's voice
+- End with your own opinion or a question
+
+Return ONLY valid JSON:
+{{
+  "hook": "Opening line — 10-15 words, scroll-stopper reaction to the article",
+  "body": "3-4 short paragraphs sharing Jatin's take",
+  "cta": "Closing question or bold statement",
+  "hashtags": ["tag1", "tag2", "tag3", "tag4", "tag5"],
+  "image_query": "2-4 word Unsplash search query",
+  "post_type": "image"
+}}"""
+        response = await self.model.generate_content_async(
+            prompt,
+            generation_config=genai.GenerationConfig(temperature=0.85, max_output_tokens=4096),
+        )
+        topic = Topic(title=f"Article: {url[:60]}", source="url", relevance_score=10.0)
+        return self._parse_response(response.text.strip(), topic)
+
     async def generate_first_comment(self, post_text: str) -> str:
         """Generate a short first comment to boost LinkedIn algorithm reach."""
         prompt = f"""This LinkedIn post was just published:
@@ -218,11 +251,20 @@ Writing rules (non-negotiable):
 - Use "I", "we", "my team", "a client told me once" — personal anecdotes make it real
 - Short sentences. Very short. One idea per line.
 - No buzzwords: no "leverage", "synergy", "game-changer", "diving deep", "in today's fast-paced world"
-- No listicles with emojis as bullets (❌ 1. Do this ✅ 2. Do that)
+- No listicles with emojis as bullets
 - Vulnerability is powerful — share a mistake, a lesson learned, a moment of doubt
 - Start mid-thought — like you're continuing a conversation, not giving a TED talk
 - The best posts feel like a text message from a smart friend, not a press release
 - End with a real question you actually want answered, or a provocative one-liner
+
+BANNED punctuation and patterns (these are AI giveaways — never use):
+- Em-dashes (—) — use a comma or full stop instead
+- Colons to introduce points e.g. "Here is why: ..." — just say it directly
+- "Here's the thing" / "Let me explain" / "The truth is" / "Here's what I learned"
+- Numbered lists (1. 2. 3.)
+- "In today's world" / "In the current landscape" / "It's important to note"
+- Starting sentences with "Additionally", "Furthermore", "Moreover", "However,"
+- "Navigating" / "Delve" / "Unlock" / "Harness" / "Pivotal" / "Transformative"
 
 Topics {config.your_name} talks about: {", ".join(config.your_niche)}
 """
