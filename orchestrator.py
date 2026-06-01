@@ -59,9 +59,15 @@ class Orchestrator:
         logger.info("=" * 60)
 
         await self.approval_bot.send_notification(
-            f"🤖 *LinkedIn Agent Starting*\n"
-            f"Post type today: *{post_type}* 📝"
+            f"🤖 *LinkedIn Agent Starting* — {post_type.upper()} post\n\n"
+            f"*30 seconds mein reply karo (optional):*\n"
+            f"🔗 `/url <article/insta link>` — us pe post banao\n"
+            f"💡 `/topic <idea>` — apna topic do\n\n"
+            f"_Warna main khud topic choose kar leta hoon..._"
         )
+
+        # 30-second window for user to send /url or /topic before generation starts
+        await asyncio.sleep(30)
 
         await self._maybe_send_weekly_report()
         await self.send_performance_reminders()
@@ -155,6 +161,15 @@ class Orchestrator:
             )
             if selected_post is None:
                 await self.approval_bot.send_notification("📭 Skipped. Next time!")
+                return
+
+            # User sent /url during selection — regenerate from that URL
+            if edited_text and edited_text.startswith("__URL__:"):
+                new_url = edited_text[8:]
+                article_text = await self._fetch_article_text(new_url)
+                regen_post = await self.content_writer.generate_post_from_article(new_url, article_text)
+                final_image = user_image_path or image_path
+                await self._publish_and_notify(regen_post.full_text, final_image, topic)
                 return
 
             # User's own image takes priority over Unsplash
