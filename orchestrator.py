@@ -12,6 +12,7 @@ import asyncio
 import json
 import logging
 import os
+import random
 import sys
 from datetime import datetime, timezone, date
 from pathlib import Path
@@ -116,7 +117,7 @@ class Orchestrator:
             return Topic(title=title, source="calendar", relevance_score=9.0)
 
         # Auto-fetch
-        topics = await self.topic_engine.get_topics(count=15)
+        topics = await self.topic_engine.get_topics(count=25)
         return self._pick_topic(topics)
 
     # ── Regular pipeline ──────────────────────────────────────────────────────
@@ -368,11 +369,14 @@ class Orchestrator:
 
     def _pick_topic(self, topics: list[Topic]) -> Topic:
         used_titles = set(self._state.get("used_topics", []))
-        for topic in topics:
-            if topic.title.lower() not in used_titles:
-                return topic
-        self._state["used_topics"] = []
-        return topics[0]
+        # Collect top-5 unused topics, then pick one randomly for variety
+        unused = [t for t in topics if t.title.lower() not in used_titles]
+        if not unused:
+            # All topics used — reset and try again
+            self._state["used_topics"] = []
+            unused = topics
+        pool = unused[:5]  # top 5 by score
+        return random.choice(pool)
 
     def _mark_topic_used(self, topic: Topic) -> None:
         used = self._state.setdefault("used_topics", [])
