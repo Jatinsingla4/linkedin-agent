@@ -224,14 +224,25 @@ class ApprovalBot:
     ) -> tuple[Optional[object], Optional[str], Optional[str]]:
         """Send N post versions to Telegram, wait for user to pick one.
         Returns (selected_post, edited_text, user_image_path)."""
-        # Send each version as a separate preview message
+        # Send each version as a separate message — full text, split if needed
         for i, post in enumerate(posts, 1):
-            preview = self._escape_md(post.full_text[:700])
-            await self.bot.send_message(
-                chat_id=self.chat_id,
-                text=f"*Version {i}:*\n\n{preview}",
-                parse_mode=ParseMode.MARKDOWN,
-            )
+            full = post.full_text
+            header = f"📝 *Version {i}:*\n\n"
+            # Telegram limit is 4096 chars per message
+            chunks = []
+            remaining = full
+            while remaining:
+                space = 4096 - (len(header) if not chunks else 0)
+                chunks.append(remaining[:space])
+                remaining = remaining[space:]
+            for j, chunk in enumerate(chunks):
+                text = (header if j == 0 else "") + self._escape_md(chunk)
+                await self.bot.send_message(
+                    chat_id=self.chat_id,
+                    text=text,
+                    parse_mode=ParseMode.MARKDOWN,
+                )
+                await asyncio.sleep(0.5)
             await asyncio.sleep(1)
 
         # Selection buttons

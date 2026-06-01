@@ -25,28 +25,14 @@ from config.settings import config
 
 logger = logging.getLogger(__name__)
 
-# Curated fallback images per topic category (Unsplash direct image URLs)
+# Curated fallback images — picsum.photos gives reliable random professional images
 FALLBACK_IMAGES = {
-    "marketing": [
-        "https://images.unsplash.com/photo-1533750349088-cd871a92f312?w=1200",
-        "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=1200",
-    ],
-    "branding": [
-        "https://images.unsplash.com/photo-1611532736597-de2d4265fba3?w=1200",
-        "https://images.unsplash.com/photo-1558655146-9f40138edfeb?w=1200",
-    ],
-    "technology": [
-        "https://images.unsplash.com/photo-1518770660439-4636190af475?w=1200",
-        "https://images.unsplash.com/photo-1677442135703-1787eea5ce01?w=1200",
-    ],
-    "business": [
-        "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=1200",
-        "https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?w=1200",
-    ],
-    "default": [
-        "https://images.unsplash.com/photo-1499750310107-5fef28a66643?w=1200",
-        "https://images.unsplash.com/photo-1521737852567-6949f3f9f2b5?w=1200",
-    ],
+    "marketing":   ["https://picsum.photos/seed/mktg1/1200/628", "https://picsum.photos/seed/mktg2/1200/628"],
+    "branding":    ["https://picsum.photos/seed/brand1/1200/628", "https://picsum.photos/seed/brand2/1200/628"],
+    "technology":  ["https://picsum.photos/seed/tech1/1200/628", "https://picsum.photos/seed/tech2/1200/628"],
+    "business":    ["https://picsum.photos/seed/biz1/1200/628", "https://picsum.photos/seed/biz2/1200/628"],
+    "ai":          ["https://picsum.photos/seed/ai1/1200/628", "https://picsum.photos/seed/ai2/1200/628"],
+    "default":     ["https://picsum.photos/seed/post1/1200/628", "https://picsum.photos/seed/post2/1200/628"],
 }
 
 
