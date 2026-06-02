@@ -2,8 +2,10 @@ name: LinkedIn Agent
 
 on:
   schedule:
-    # Mon, Tue, Thu, Sat, Sun at 10:00 AM IST (4:30 AM UTC) — peak LinkedIn engagement
-    - cron: "30 4 * * 1,2,4,6,0"
+    # Mon, Tue, Wed, Thu — 9:00 AM IST (3:30 AM UTC) — peak weekday window
+    - cron: "30 3 * * 1,2,3,4"
+    # Sunday — 10:30 AM IST (5:00 AM UTC) — after calendar planning (9 AM)
+    - cron: "0 5 * * 0"
 
   workflow_dispatch:
     inputs:
@@ -42,7 +44,7 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           UNSPLASH_ACCESS_KEY: ${{ secrets.UNSPLASH_ACCESS_KEY }}
-          POSTS_PER_WEEK: "4"
+          POSTS_PER_WEEK: "5"
           APPROVAL_TIMEOUT_HOURS: "12"
           GENERATE_VERSIONS: "2"
           ENABLE_FIRST_COMMENT: "true"
@@ -50,7 +52,7 @@ jobs:
           YOUR_ROLE: "AI Executive"
           YOUR_COMPANY: "Grapes Worldwide"
           YOUR_LINKEDIN_NICHE: "marketing,branding,AI,agency life,startup"
-          PERSONAL_STORY_DAY: "3"
+          PERSONAL_STORY_DAY: "2"
           POLL_DAY: "6"
           CAROUSEL_DAY: "5"
           DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
