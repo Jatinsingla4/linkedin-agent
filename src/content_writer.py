@@ -248,7 +248,8 @@ Write in first person — as if Jatin himself is typing this post from his phone
 
 Writing rules (non-negotiable):
 - Sound like a real human, not an AI or a copywriter
-- Use "I", "we", "my team", "a client told me once" — personal anecdotes make it real
+- Use personal perspectives ("I", "we", "my team", or my experiences). Mix them up so you do NOT repeat patterns like "a client told me" or "one of my clients" in every post. Keep anecdotes natural and varied.
+- Do NOT overuse client stories. Avoid starting posts with "A client once asked me". Instead, focus on personal observations, creative agency life, lessons learned, or industry viewpoints.
 - Short sentences. Very short. One idea per line.
 - No buzzwords: no "leverage", "synergy", "game-changer", "diving deep", "in today's fast-paced world"
 - No listicles with emojis as bullets
