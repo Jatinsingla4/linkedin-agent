@@ -281,12 +281,14 @@ Write about the given topic naturally — don't force-fit any particular industr
 
 {topic_context}
 
+⚠️ STRICT RULE: Write ONLY about the topic above. Do NOT drift to SEO, AI Overviews, search rankings, or any other topic. If the topic says "AI tools for tech", write about AI tools for tech. Stay exactly on topic.
+
 Write a high-performing LinkedIn post on this topic. Return ONLY valid JSON, no markdown, no explanation.
 
 JSON schema (follow exactly):
 {{
-  "hook": "First line — 10-15 words max. Must be a scroll-stopper. A bold claim, a surprising stat, or a provocative question.",
-  "body": "3-5 short paragraphs. Each paragraph max 3 sentences. Use line breaks. Share a specific insight, story, or observation. Be specific — avoid generic advice.",
+  "hook": "First line — 10-15 words max. Must be a scroll-stopper. A bold claim, a surprising stat, or a provocative question. Must be directly about: {topic.title}",
+  "body": "3-5 short paragraphs. Each paragraph max 3 sentences. Use line breaks. Share a specific insight, story, or observation about {topic.title}. Be specific — avoid generic advice.",
   "cta": "One line. A genuine question that invites discussion or a bold closing statement. No 'let me know your thoughts'.",
   "hashtags": ["tag1", "tag2", "tag3", "tag4", "tag5"],
   "image_query": "2-4 word Unsplash search query that visually represents this post. Be specific (e.g. 'brand packaging design' not just 'marketing')",
@@ -295,7 +297,7 @@ JSON schema (follow exactly):
 }}
 
 Rules:
-- hashtags: 5-8 tags, no # symbol, lowercase, relevant to topic and {config.your_niche[0]}
+- hashtags: 5-8 tags, no # symbol, lowercase, relevant to the exact topic
 - post_type: always "image" unless it's a list/tips post (then "carousel_script")
 - Total post length: 150-280 words
 - DO NOT include the hook in the body — they are separate fields
