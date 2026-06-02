@@ -44,14 +44,14 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           UNSPLASH_ACCESS_KEY: ${{ secrets.UNSPLASH_ACCESS_KEY }}
-          POSTS_PER_WEEK: "5"
+          POSTS_PER_WEEK: "4"
           APPROVAL_TIMEOUT_HOURS: "12"
           GENERATE_VERSIONS: "2"
           ENABLE_FIRST_COMMENT: "true"
           YOUR_NAME: "Jatin"
           YOUR_ROLE: "AI Executive"
           YOUR_COMPANY: "Grapes Worldwide"
-          YOUR_LINKEDIN_NICHE: "marketing,branding,AI,agency life,startup"
+          YOUR_LINKEDIN_NICHE: "Technical,branding,AI,agency life,startup"
           PERSONAL_STORY_DAY: "2"
           POLL_DAY: "6"
           CAROUSEL_DAY: "5"
