@@ -262,10 +262,11 @@ class ApprovalBot:
                 f"📌 Topic: _{self._escape_md(topic[:80])}_\n\n"
                 f"━━━━━━━━━━━━━━━━━━━━━━\n"
                 f"*Commands:*\n"
-                f"🔗 `/url <article ya insta link>` — us link pe naya post banao\n"
+                f"🔄 `/newtopic <apna topic>` — abhi is topic pe naya post banao\n"
+                f"🔗 `/url <article ya insta link>` — us link pe post banao\n"
                 f"✏️ `/edit <poora post text>` — apna text directly post karo\n"
                 f"📸 *Photo bhejo* — apni image use hogi\n"
-                f"💡 `/topic <idea>` — kal ke liye topic suggest karo\n"
+                f"💡 `/topic <idea>` — kal ke liye queue mein daalo\n"
                 f"❌ Skip karna ho toh neeche button dabao"
             ),
             parse_mode=ParseMode.MARKDOWN,
@@ -319,13 +320,19 @@ class ApprovalBot:
                         continue
 
                     text = (update.message.text or "").strip()
+                    if text.lower().startswith("/newtopic "):
+                        new_topic = text[10:].strip()
+                        if new_topic:
+                            await self.send_notification(
+                                f"🔄 Got it! Abhi *{self._escape_md(new_topic[:60])}* pe post bana raha hoon...\n_Ek minute lagega_"
+                            )
+                            return posts[0], f"__NEWTOPIC__:{new_topic}", user_image_path
                     if text.lower().startswith("/url "):
                         url = text[5:].strip()
                         if url.startswith("http"):
                             await self.send_notification(
                                 f"🔗 Got it! Generating post from:\n_{self._escape_md(url[:80])}_\n\n_Ek minute..._"
                             )
-                            # Return special signal: edited_text = "__URL__:<url>"
                             return posts[0], f"__URL__:{url}", user_image_path
                     if text.lower().startswith("/edit "):
                         new_text = text[6:].strip()

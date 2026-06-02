@@ -163,6 +163,24 @@ class Orchestrator:
                 await self.approval_bot.send_notification("📭 Skipped. Next time!")
                 return
 
+            # User sent /newtopic — regenerate on their topic right now
+            if edited_text and edited_text.startswith("__NEWTOPIC__:"):
+                new_topic_title = edited_text[13:]
+                new_topic = Topic(title=new_topic_title, source="telegram", relevance_score=10.0)
+                new_posts = await self.content_writer.generate_multiple_posts(new_topic, count=config.generate_versions)
+                new_fetched = await self.image_fetcher.fetch_image(new_posts[0].image_query)
+                new_image = new_fetched.file_path if new_fetched else (user_image_path or image_path)
+                selected2, edited2, user_img2 = await self.approval_bot.request_version_selection(
+                    posts=new_posts, topic=new_topic_title, image_path=new_image
+                )
+                if selected2 is None:
+                    await self.approval_bot.send_notification("📭 Skipped.")
+                    return
+                final_image = user_img2 or new_image
+                final_text = edited2 or selected2.full_text
+                await self._publish_and_notify(final_text, final_image, new_topic)
+                return
+
             # User sent /url during selection — regenerate from that URL
             if edited_text and edited_text.startswith("__URL__:"):
                 new_url = edited_text[8:]
