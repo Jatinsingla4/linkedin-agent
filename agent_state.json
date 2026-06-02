@@ -1,9 +1,17 @@
 {
   "used_topics": [
-    "the role of citations in aeo: why citations matter more than backlinks for ai visibility"
+    "the role of citations in aeo: why citations matter more than backlinks for ai visibility",
+    "what ai overviews mean for seo &amp; website traffic"
   ],
-  "posts_published": 1,
-  "posts_this_week": 1,
-  "last_post_at": "2026-05-28T17:22:10.562035+00:00",
-  "recent_posts": []
+  "posts_published": 2,
+  "posts_this_week": 2,
+  "last_post_at": "2026-05-29T16:25:11.655447+00:00",
+  "recent_posts": [
+    {
+      "topic": "What AI Overviews mean for SEO &amp; website traffic",
+      "url": "https://www.linkedin.com/feed/update/urn:li:share:7466162737660850177/",
+      "published_at": "2026-05-29T16:25:11.655461+00:00",
+      "reminder_sent": false
+    }
+  ]
 }

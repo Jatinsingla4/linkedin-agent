@@ -17,6 +17,8 @@ import sys
 from datetime import datetime, timezone, date
 from pathlib import Path
 from typing import Optional
+import pytz
+
 
 from config.settings import config
 from src.topic_engine import TopicEngine, Topic
@@ -45,6 +47,7 @@ class Orchestrator:
         self.content_writer = ContentWriter()
         self.image_fetcher = ImageFetcher()
         self.approval_bot = ApprovalBot()
+        self.approval_bot.content_writer = self.content_writer
         self.publisher = LinkedInPublisher()
         self._state = self._load_state()
 
@@ -252,6 +255,7 @@ class Orchestrator:
             await self.approval_bot.send_notification("📭 Poll skipped.")
             return
 
+        await self._wait_for_ideal_time()
         result = await self.publisher.publish_poll(intro, question, options, hashtags)
         if result.success:
             self._mark_topic_used(topic)
@@ -308,6 +312,7 @@ class Orchestrator:
                 f"Slide {s['slide']}: {s['title']}" for s in slides[1:]
             ) + f"\n\nFollow for weekly insights on {', '.join(config.your_niche[:3])}."
 
+            await self._wait_for_ideal_time()
             result = await self.publisher.publish_document(caption, pdf_path, topic.title)
             if result.success:
                 self._mark_topic_used(topic)
@@ -355,11 +360,30 @@ class Orchestrator:
             logger.warning(f"Article fetch failed: {e}")
             return ""
 
+    async def _wait_for_ideal_time(self) -> None:
+        """If the current time is before the ideal posting time, waits until then."""
+        ist = pytz.timezone("Asia/Kolkata")
+        now = datetime.now(ist)
+        is_sunday = now.weekday() == 6
+        ideal_hour, ideal_minute = (10, 30) if is_sunday else (9, 30)
+        ideal_time = now.replace(hour=ideal_hour, minute=ideal_minute, second=0, microsecond=0)
+        if now < ideal_time:
+            wait_seconds = (ideal_time - now).total_seconds()
+            wait_minutes = int(wait_seconds // 60)
+            logger.info(f"Scheduled post: waiting {wait_minutes} minutes until ideal time ({ideal_hour:02d}:{ideal_minute:02d} IST)")
+            await self.approval_bot.send_notification(
+                f"⏳ *Post Approved & Scheduled!*\n"
+                f"Ideal posting time is *{ideal_hour:02d}:{ideal_minute:02d} AM IST*.\n"
+                f"Bot will wait *{wait_minutes} minutes* before publishing to LinkedIn..."
+            )
+            await asyncio.sleep(wait_seconds)
+
     # ── Publish helper ────────────────────────────────────────────────────────
 
     async def _publish_and_notify(
         self, text: str, image_path: Optional[str], topic: Topic
     ) -> None:
+        await self._wait_for_ideal_time()
         result = await self.publisher.publish(text=text, image_path=image_path)
         if result.success:
             self._mark_topic_used(topic)

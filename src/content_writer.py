@@ -344,3 +344,27 @@ Rules:
             full_text=full_text,
             word_count=len(full_text.split()),
         )
+
+    async def rewrite_post(self, original_text: str, instruction: str) -> str:
+        """Rewrite a post's full text based on a user's instruction."""
+        prompt = f"""You are writing as {config.your_name}, a {config.your_role} at {config.your_company}.
+Keep the same persona: first person, smart, professional but conversational, short sentences, no buzzwords.
+
+Here is the original LinkedIn post:
+---
+{original_text}
+---
+
+Instruction for rewrite:
+"{instruction}"
+
+Please rewrite the LinkedIn post according to the instruction.
+Keep the overall structure (Hook, Body paragraphs, CTA, Hashtags).
+Return ONLY the rewritten final post text. No explanations, no introduction, no markdown backticks, no markdown formatting (like asterisks or bold text) unless requested. Just the raw, ready-to-copy post text.
+"""
+        response = await self.model.generate_content_async(
+            prompt,
+            generation_config=genai.GenerationConfig(temperature=0.85, max_output_tokens=4096),
+        )
+        return response.text.strip()
+

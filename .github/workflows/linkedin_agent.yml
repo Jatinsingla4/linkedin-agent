@@ -12,14 +12,14 @@ on:
       dry_run:
         description: "Dry run (generate post but don't publish)"
         required: false
-        default: "false"
+        default: false
         type: boolean
 
 jobs:
   post:
     name: Generate & Post
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 360
 
     steps:
       - name: Checkout repository

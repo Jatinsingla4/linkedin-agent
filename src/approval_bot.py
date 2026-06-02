@@ -224,6 +224,7 @@ class ApprovalBot:
     ) -> tuple[Optional[object], Optional[str], Optional[str]]:
         """Send N post versions to Telegram, wait for user to pick one.
         Returns (selected_post, edited_text, user_image_path)."""
+        version_msg_ids = {}
         # Send each version as a separate message — full text, split if needed
         for i, post in enumerate(posts, 1):
             full = post.full_text
@@ -235,14 +236,17 @@ class ApprovalBot:
                 space = 4096 - (len(header) if not chunks else 0)
                 chunks.append(remaining[:space])
                 remaining = remaining[space:]
+            last_msg = None
             for j, chunk in enumerate(chunks):
                 text = (header if j == 0 else "") + self._escape_md(chunk)
-                await self.bot.send_message(
+                last_msg = await self.bot.send_message(
                     chat_id=self.chat_id,
                     text=text,
                     parse_mode=ParseMode.MARKDOWN,
                 )
                 await asyncio.sleep(0.5)
+            if last_msg:
+                version_msg_ids[last_msg.message_id] = i - 1
             await asyncio.sleep(1)
 
         # Selection buttons
@@ -272,10 +276,10 @@ class ApprovalBot:
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=keyboard,
         )
-        return await self._wait_for_version_response(msg.message_id, posts)
+        return await self._wait_for_version_response(msg.message_id, posts, version_msg_ids, topic, keyboard)
 
     async def _wait_for_version_response(
-        self, message_id: int, posts: list
+        self, message_id: int, posts: list, version_msg_ids: dict, topic: str, keyboard: InlineKeyboardMarkup
     ) -> tuple[Optional[object], Optional[str], Optional[str]]:
         timeout_seconds = config.approval_timeout_hours * 3600
         elapsed = 0
@@ -343,6 +347,57 @@ class ApprovalBot:
                     if text in ("❌", "/reject", "no", "skip"):
                         await self.send_notification("❌ Skipped.")
                         return None, None, None
+
+                    # Conversational edits handler
+                    if text and not text.startswith("/"):
+                        target_version_idx = None
+                        instruction = ""
+
+                        # 1. Reply checking
+                        if update.message.reply_to_message:
+                            reply_msg_id = update.message.reply_to_message.message_id
+                            if reply_msg_id in version_msg_ids:
+                                target_version_idx = version_msg_ids[reply_msg_id]
+                                instruction = text
+
+                        # 2. Text prefix checking
+                        if target_version_idx is None:
+                            import re
+                            m = re.match(r"^(v|version)\s*(\d+)[:\-\s]+(.*)$", text, re.IGNORECASE)
+                            if m:
+                                v_num = int(m.group(2))
+                                if 1 <= v_num <= len(posts):
+                                    target_version_idx = v_num - 1
+                                    instruction = m.group(3).strip()
+
+                        if target_version_idx is not None and instruction and hasattr(self, "content_writer") and self.content_writer:
+                            await self.send_notification(
+                                f"🔄 *Rewriting Version {target_version_idx + 1}...*\n"
+                                f"Instruction: _{self._escape_md(instruction)}_\n"
+                                f"_Ek minute lagega..._"
+                            )
+                            try:
+                                rewritten_text = await self.content_writer.rewrite_post(
+                                    posts[target_version_idx].full_text,
+                                    instruction
+                                )
+                                posts[target_version_idx].full_text = rewritten_text
+                                new_msg = await self.bot.send_message(
+                                    chat_id=self.chat_id,
+                                    text=f"📝 *Version {target_version_idx + 1} (Edited):*\n\n" + self._escape_md(rewritten_text),
+                                    parse_mode=ParseMode.MARKDOWN,
+                                )
+                                version_msg_ids[new_msg.message_id] = target_version_idx
+                                select_msg = await self.bot.send_message(
+                                    chat_id=self.chat_id,
+                                    text="👆 *Pick a version or reply to edit again:*",
+                                    reply_markup=keyboard,
+                                )
+                                message_id = select_msg.message_id
+                            except Exception as e:
+                                logger.error(f"Failed to rewrite post: {e}")
+                                await self.send_notification(f"❌ Rewrite failed: `{e}`")
+                            continue
 
         await self.send_notification(f"⏰ Timed out after {config.approval_timeout_hours}h — skipped.")
         return None, None, None
