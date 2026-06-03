@@ -41,6 +41,9 @@ class GeneratedPost:
     word_count: int
 
 
+FALLBACK_MODELS = ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash"]
+
+
 class ContentWriter:
     def __init__(self):
         genai.configure(api_key=config.gemini_api_key)
@@ -49,21 +52,44 @@ class ContentWriter:
 
     # ── Public interface ──────────────────────────────────────────────────────
 
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=2, min=30, max=90))
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=2, min=60, max=120))
     async def generate_post(self, topic: Topic) -> GeneratedPost:
         """Generate a complete LinkedIn post for a given topic."""
         prompt = self._build_prompt(topic)
 
         logger.info(f"ContentWriter: generating post for topic: {topic.title[:60]}")
 
-        response = await self.model.generate_content_async(
-            prompt,
-            generation_config=genai.GenerationConfig(
-                temperature=0.85,        # Creative but not unhinged
-                top_p=0.92,
-                max_output_tokens=4096,
+        try:
+            response = await self.model.generate_content_async(
+                prompt,
+                generation_config=genai.GenerationConfig(
+                    temperature=0.85,
+                    top_p=0.92,
+                    max_output_tokens=4096,
+                )
             )
-        )
+        except Exception as e:
+            if "ResourceExhausted" in str(e) or "quota" in str(e).lower():
+                # Primary model quota hit — try fallback models
+                for fallback in FALLBACK_MODELS:
+                    try:
+                        logger.warning(f"Primary model quota hit, trying fallback: {fallback}")
+                        fb_model = genai.GenerativeModel(fallback)
+                        response = await fb_model.generate_content_async(
+                            prompt,
+                            generation_config=genai.GenerationConfig(
+                                temperature=0.85,
+                                max_output_tokens=4096,
+                            )
+                        )
+                        break
+                    except Exception as fe:
+                        logger.warning(f"Fallback {fallback} also failed: {fe}")
+                        continue
+                else:
+                    raise  # All models failed
+            else:
+                raise
 
         raw_text = response.text.strip()
         return self._parse_response(raw_text, topic)
