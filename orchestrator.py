@@ -210,8 +210,17 @@ class Orchestrator:
         user_image_path: Optional[str] = None
         try:
             logger.info(f"Generating personal story for: {topic.title[:60]}")
-            post = await self.content_writer.generate_personal_story(topic)
-            posts = [post]
+            # Generate 2 story versions so user can pick
+            posts = []
+            for i in range(config.generate_versions):
+                if i > 0:
+                    await asyncio.sleep(35)
+                try:
+                    posts.append(await self.content_writer.generate_personal_story(topic))
+                except Exception as e:
+                    logger.warning(f"Story version {i+1} failed: {e}")
+            if not posts:
+                raise ValueError("All story generation attempts failed")
 
             fetched = await self.image_fetcher.fetch_image(post.image_query)
             image_path = fetched.file_path if fetched else None
@@ -221,6 +230,21 @@ class Orchestrator:
             )
             if selected_post is None:
                 await self.approval_bot.send_notification("📭 Story skipped.")
+                return
+
+            # Handle /newtopic — regenerate 2 versions on user's topic
+            if edited_text and edited_text.startswith("__NEWTOPIC__:"):
+                await self._run_regular_pipeline(
+                    Topic(title=edited_text[13:], source="telegram", relevance_score=10.0)
+                )
+                return
+
+            # Handle /url — generate from article
+            if edited_text and edited_text.startswith("__URL__:"):
+                new_url = edited_text[8:]
+                article_text = await self._fetch_article_text(new_url)
+                regen_post = await self.content_writer.generate_post_from_article(new_url, article_text)
+                await self._publish_and_notify(regen_post.full_text, user_image_path or image_path, topic)
                 return
 
             final_image = user_image_path or image_path
