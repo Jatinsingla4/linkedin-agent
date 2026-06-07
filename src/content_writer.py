@@ -13,6 +13,7 @@ Produces:
 import asyncio
 import json
 import logging
+import random
 import re
 from dataclasses import dataclass
 from typing import Literal, Optional
@@ -43,6 +44,82 @@ class GeneratedPost:
 
 FALLBACK_MODELS = ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash"]
 
+# Rotate post formats so every post feels structurally different
+POST_FORMATS = [
+    {
+        "name": "hot_take",
+        "instruction": """Format: HOT TAKE
+Start with a bold, slightly controversial opinion about the topic.
+No warm-up. First sentence IS the take.
+Then back it up with 2-3 punchy lines explaining why you believe this.
+End with a sharp one-liner or a question that challenges the reader.
+Keep it under 150 words. Short. Punchy. Opinionated.""",
+    },
+    {
+        "name": "observation",
+        "instruction": """Format: FIELD OBSERVATION
+Something you noticed recently — at work, in a pitch, while reviewing a brief, scrolling through feeds.
+Start mid-scene. Drop the reader into a specific moment. Not "I was thinking about X". More like "Reviewed 3 brand decks this week. All said the same thing."
+What did you notice → what it tells you about the industry → what you'd do differently.
+120-180 words.""",
+    },
+    {
+        "name": "mistake",
+        "instruction": """Format: HONEST MISTAKE
+Share something you got wrong — a decision, an assumption, an approach. Be specific.
+No vague humblebrags. What exactly did you do, what happened, what did you learn.
+Structure: What I did → What actually happened → What I now do instead.
+Vulnerability here is the whole point. No moral lecture at the end — just what changed for you.
+130-200 words.""",
+    },
+    {
+        "name": "before_after",
+        "instruction": """Format: BEFORE / AFTER
+Pick one shift in thinking or approach related to the topic.
+Structure: What I used to think/do → What changed → What I think/do now.
+Keep each section 2-3 lines max. No lengthy explanations.
+End with the key insight that caused the shift.
+100-160 words.""",
+    },
+    {
+        "name": "number_hook",
+        "instruction": """Format: NUMBER / STAT HOOK
+Start with a specific number, percentage, or timeframe related to the topic.
+Make it surprising or counterintuitive.
+Then unpack what that number actually means in practice.
+Don't use fake stats — if you don't have a real one, frame it as your own observation (e.g. "8 out of 10 briefs I review...").
+End with a direct question or a takeaway.
+120-170 words.""",
+    },
+    {
+        "name": "unpopular_truth",
+        "instruction": """Format: UNPOPULAR TRUTH
+Something true about this topic that most people in the industry won't say out loud.
+Start with the uncomfortable truth directly. Don't build up to it.
+Then explain why people avoid saying it and why it matters.
+No hedging. No "just my opinion". State it plainly.
+End with what you think should change.
+130-180 words.""",
+    },
+    {
+        "name": "short_sharp",
+        "instruction": """Format: SHORT & SHARP
+Maximum 100 words. Every line earns its place.
+No intro sentences. No "I wanted to share". Just the idea.
+4-6 lines total. Each line a complete thought.
+The power comes from what you leave OUT.
+End on the strongest line — not a question, a statement.""",
+    },
+    {
+        "name": "reframe",
+        "instruction": """Format: REFRAME
+Take a common belief or phrase about the topic and flip it.
+Start with: "Everyone says X. But actually..." or just state the reframe directly.
+Explain the alternative way to look at it with a concrete example from your work.
+150-200 words.""",
+    },
+]
+
 
 class ContentWriter:
     def __init__(self):
@@ -53,9 +130,9 @@ class ContentWriter:
     # ── Public interface ──────────────────────────────────────────────────────
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=2, min=60, max=120))
-    async def generate_post(self, topic: Topic) -> GeneratedPost:
+    async def generate_post(self, topic: Topic, post_format: dict | None = None) -> GeneratedPost:
         """Generate a complete LinkedIn post for a given topic."""
-        prompt = self._build_prompt(topic)
+        prompt = self._build_prompt(topic, post_format=post_format)
 
         logger.info(f"ContentWriter: generating post for topic: {topic.title[:60]}")
 
@@ -95,13 +172,15 @@ class ContentWriter:
         return self._parse_response(raw_text, topic)
 
     async def generate_multiple_posts(self, topic: "Topic", count: int = 2) -> list["GeneratedPost"]:
-        """Generate multiple post variations sequentially to avoid rate limits."""
+        """Generate multiple post variations sequentially — each with a different format."""
         posts = []
-        for i in range(count):
+        # Pick 'count' different formats so versions never look the same
+        selected_formats = random.sample(POST_FORMATS, k=min(count, len(POST_FORMATS)))
+        for i, fmt in enumerate(selected_formats):
             if i > 0:
                 await asyncio.sleep(35)
             try:
-                post = await self.generate_post(topic)
+                post = await self.generate_post(topic, post_format=fmt)
                 posts.append(post)
             except Exception as e:
                 logger.warning(f"Version {i + 1} generation failed: {e}")
@@ -274,8 +353,6 @@ Write in first person — as if Jatin himself is typing this post from his phone
 
 Writing rules (non-negotiable):
 - Sound like a real human, not an AI or a copywriter
-- Use personal perspectives ("I", "we", "my team", or my experiences). Mix them up so you do NOT repeat patterns like "a client told me" or "one of my clients" in every post. Keep anecdotes natural and varied.
-- Do NOT overuse client stories. Avoid starting posts with "A client once asked me". Instead, focus on personal observations, creative agency life, lessons learned, or industry viewpoints.
 - Short sentences. Very short. One idea per line.
 - No buzzwords: no "leverage", "synergy", "game-changer", "diving deep", "in today's fast-paced world"
 - No listicles with emojis as bullets
@@ -284,9 +361,17 @@ Writing rules (non-negotiable):
 - The best posts feel like a text message from a smart friend, not a press release
 - End with a real question you actually want answered, or a provocative one-liner
 
-BANNED punctuation and patterns (these are AI giveaways — never use):
+BANNED OPENINGS (never start a post with these — they are instant AI giveaways):
+- "My team..." / "Our team..."
+- "Last time I met with a client..." / "A client told me..." / "One of my clients..."
+- "I've been thinking about..." / "Something I've been reflecting on..."
+- "In my experience..." / "Over the years I've learned..."
+- "Let me share..." / "I wanted to share..."
+- "We had a meeting..." / "I was in a meeting..."
+
+BANNED punctuation and patterns:
 - Em-dashes (—) — use a comma or full stop instead
-- Colons to introduce points e.g. "Here is why: ..." — just say it directly
+- Colons to introduce points: — just say it directly
 - "Here's the thing" / "Let me explain" / "The truth is" / "Here's what I learned"
 - Numbered lists (1. 2. 3.)
 - "In today's world" / "In the current landscape" / "It's important to note"
@@ -297,10 +382,15 @@ BANNED punctuation and patterns (these are AI giveaways — never use):
 Write about the given topic naturally — don't force-fit any particular industry or niche into every post.
 """
 
-    def _build_prompt(self, topic: Topic) -> str:
+    def _build_prompt(self, topic: Topic, post_format: dict | None = None) -> str:
         topic_context = f"Topic: {topic.title}"
         if topic.summary:
             topic_context += f"\nContext: {topic.summary[:300]}"
+
+        if post_format is None:
+            post_format = random.choice(POST_FORMATS)
+
+        logger.info(f"ContentWriter: using format '{post_format['name']}' for this post")
 
         return f"""{self._system_context}
 
@@ -308,17 +398,20 @@ Write about the given topic naturally — don't force-fit any particular industr
 
 {topic_context}
 
-⚠️ STRICT RULE: Write ONLY about the topic above. Do NOT drift to SEO, AI Overviews, search rankings, or any other topic. If the topic says "AI tools for tech", write about AI tools for tech. Stay exactly on topic.
+⚠️ STRICT RULE: Write ONLY about the topic above. Do NOT drift to SEO, AI Overviews, search rankings, or any other topic. Stay exactly on topic.
 
-Write a high-performing LinkedIn post on this topic. Return ONLY valid JSON, no markdown, no explanation.
+POST FORMAT TO FOLLOW:
+{post_format['instruction']}
+
+Write a high-performing LinkedIn post following the format above. Return ONLY valid JSON, no markdown, no explanation.
 
 JSON schema (follow exactly):
 {{
-  "hook": "First line — 10-15 words max. Must be a scroll-stopper. A bold claim, a surprising stat, or a provocative question. Must be directly about: {topic.title}",
-  "body": "3-5 short paragraphs. Each paragraph max 3 sentences. Use line breaks. Share a specific insight, story, or observation about {topic.title}. Be specific — avoid generic advice.",
-  "cta": "One line. A genuine question that invites discussion or a bold closing statement. No 'let me know your thoughts'.",
+  "hook": "First line — 10-15 words max. Must match the format above. Must be directly about: {topic.title}",
+  "body": "Post body following the format's structure. Short paragraphs, line breaks between them. Specific — no generic advice.",
+  "cta": "One line. A genuine question or bold closing statement. No 'let me know your thoughts'.",
   "hashtags": ["tag1", "tag2", "tag3", "tag4", "tag5"],
-  "image_query": "2-4 word Unsplash search query that visually represents this post. Be specific (e.g. 'brand packaging design' not just 'marketing')",
+  "image_query": "2-4 word Unsplash search query that visually represents this post. Be specific.",
   "post_type": "image",
   "word_count_estimate": 150
 }}
@@ -326,7 +419,6 @@ JSON schema (follow exactly):
 Rules:
 - hashtags: 5-8 tags, no # symbol, lowercase, relevant to the exact topic
 - post_type: always "image" unless it's a list/tips post (then "carousel_script")
-- Total post length: 150-280 words
 - DO NOT include the hook in the body — they are separate fields
 - Return ONLY the JSON object. No preamble, no explanation, no markdown backticks.
 """
