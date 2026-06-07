@@ -1,0 +1,62 @@
+name: Watchdog — Auto Trigger
+
+on:
+  schedule:
+    # Mon–Thu: LinkedIn Agent runs at 3:30 AM UTC → Watchdog checks at 5:00 AM UTC (1.5h buffer)
+    - cron: "0 5 * * 1,2,3,4"
+    # Sunday: LinkedIn Agent runs at 5:00 AM UTC → Watchdog checks at 6:30 AM UTC (1.5h buffer)
+    - cron: "30 6 * * 0"
+
+  workflow_dispatch: {}   # manual trigger for testing
+
+jobs:
+  check-and-trigger:
+    name: Check & Re-trigger if Missed
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+
+    steps:
+      - name: Check if LinkedIn Agent already ran today
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TODAY=$(date -u +%Y-%m-%d)
+          echo "Checking LinkedIn Agent runs for: $TODAY"
+
+          RUNS=$(gh run list \
+            --workflow=linkedin_agent.yml \
+            --repo ${{ github.repository }} \
+            --created=$TODAY \
+            --json status,conclusion \
+            --limit 10)
+
+          echo "Runs found: $RUNS"
+
+          ALREADY_RAN=$(echo "$RUNS" | python3 -c "
+          import json, sys
+          runs = json.load(sys.stdin)
+          ok = any(
+              r.get('conclusion') == 'success' or r.get('status') == 'in_progress'
+              for r in runs
+          )
+          print('true' if ok else 'false')
+          ")
+
+          echo "already_ran=$ALREADY_RAN" >> $GITHUB_OUTPUT
+          echo "Already ran/running: $ALREADY_RAN"
+
+      - name: Trigger LinkedIn Agent (missed run detected)
+        if: steps.check.outputs.already_ran == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "⚠️  LinkedIn Agent missed today's run — triggering now!"
+          gh workflow run linkedin_agent.yml --repo ${{ github.repository }}
+          echo "✅ Triggered successfully."
+
+      - name: All good — no action needed
+        if: steps.check.outputs.already_ran == 'true'
+        run: echo "✅ LinkedIn Agent already ran today. Nothing to do."
