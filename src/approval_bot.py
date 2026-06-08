@@ -76,15 +76,15 @@ class ApprovalBot:
         try:
             message_id = await self._send_preview(post_text, topic, image_path)
             if not message_id:
-                logger.error("Failed to send Telegram preview — auto-approving for safety")
-                return ApprovalResult(status=ApprovalStatus.APPROVED)
+                logger.error("Failed to send Telegram preview — skipping post (will NOT auto-publish)")
+                return ApprovalResult(status=ApprovalStatus.REJECTED)
 
             return await self._wait_for_response(message_id, post_text)
 
         except TelegramError as e:
-            logger.error(f"Telegram error: {e}")
-            # Don't block the pipeline — notify and auto-approve
-            return ApprovalResult(status=ApprovalStatus.APPROVED)
+            logger.error(f"Telegram error: {e} — skipping post (will NOT auto-publish)")
+            # Don't publish without human approval
+            return ApprovalResult(status=ApprovalStatus.REJECTED)
 
     async def request_poll_approval(
         self, intro_text: str, question: str, options: list[str], topic: str
