@@ -27,6 +27,12 @@ pip-delete-this-directory.txt
 dist/
 build/
 
+# ── Tooling caches & locks ────────────────────────────────────
+.pytest_cache/
+.ruff_cache/
+uv.lock
+.agent.lock
+
 # ── OS ────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
