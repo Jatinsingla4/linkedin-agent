@@ -1,12 +1,8 @@
 name: LinkedIn Agent
 
 on:
-  schedule:
-    # Mon, Tue, Wed, Thu — 9:00 AM IST (3:30 AM UTC) — peak weekday window
-    - cron: "30 3 * * 1,2,3,4"
-    # Sunday — 10:30 AM IST (5:00 AM UTC) — after calendar planning (9 AM)
-    - cron: "0 5 * * 0"
-
+  # Triggered externally by cron-job.org (reliable) — see README for setup.
+  # GitHub's native cron removed as it was unreliable (delays/skips).
   workflow_dispatch:
     inputs:
       dry_run:
