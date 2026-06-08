@@ -40,7 +40,7 @@ jobs:
           YOUR_ROLE: "AI Executive"
           YOUR_COMPANY: "Grapes Worldwide"
           YOUR_LINKEDIN_NICHE: "marketing,branding,AI,FMCG,agency life,startup"
-        run: python performance_check.py
+        run: python -m entrypoints.performance_check
 
       - name: Save agent state back to repo
         if: always()

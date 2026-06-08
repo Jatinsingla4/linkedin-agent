@@ -81,12 +81,12 @@ cp .env.example .env
 
 **Now get your Access Token:**
 ```bash
-python get_linkedin_token.py
+python -m entrypoints.get_linkedin_token
 ```
 Follow the prompts — it will print your `LINKEDIN_ACCESS_TOKEN` and `LINKEDIN_PERSON_URN`.
 Paste both into `.env`.
 
-> ⚠️ LinkedIn tokens expire in **60 days**. Re-run `get_linkedin_token.py` when it expires.
+> ⚠️ LinkedIn tokens expire in **60 days**. Re-run the token helper when it expires.
 
 ---
 
@@ -112,10 +112,13 @@ Paste both into `.env`.
 ### Step 6 — Test Locally
 
 ```bash
-python orchestrator.py
+python -m entrypoints.run_agent      # run the full pipeline
+pytest                               # run the test suite
 ```
 
 You should receive a Telegram message with a post preview. Tap ✅ — it will post to LinkedIn.
+
+> Tip: set `DRY_RUN=true` in `.env` to run the whole flow without actually publishing to LinkedIn.
 
 ---
 
@@ -187,22 +190,26 @@ When you receive a post preview:
 
 ```
 linkedin-agent/
-├── orchestrator.py          # Main pipeline runner
-├── get_linkedin_token.py    # One-time token setup helper
+├── app/                          # importable package
+│   ├── config.py                 # Settings + env validation
+│   ├── models.py                 # shared dataclasses & enums
+│   ├── strings.py                # all Telegram copy
+│   ├── logging_config.py
+│   ├── core/                     # http (verified SSL), state store, scheduler, lock
+│   ├── services/                 # gemini, topics, images, pdf, telegram, linkedin/
+│   ├── pipelines/                # base + regular / story / poll / carousel
+│   ├── reporting.py              # performance reminders + weekly report
+│   └── orchestrator.py           # thin coordinator (routes by day)
+├── entrypoints/                  # python -m entrypoints.<name>
+│   ├── run_agent.py              # the posting pipeline
+│   ├── plan_calendar.py          # Sunday content planner
+│   ├── performance_check.py
+│   └── get_linkedin_token.py
+├── tests/                        # pytest suite (no network)
 ├── requirements.txt
-├── .env.example             # Template — copy to .env
-├── .gitignore
-├── config/
-│   └── settings.py          # All config & env var loading
-├── src/
-│   ├── topic_engine.py      # Fetches trending topics
-│   ├── content_writer.py    # Gemini post generation
-│   ├── image_fetcher.py     # Unsplash image fetching
-│   ├── approval_bot.py      # Telegram approval flow
-│   └── linkedin_publisher.py # LinkedIn API posting
-└── .github/
-    └── workflows/
-        └── linkedin_agent.yml  # GitHub Actions schedule
+├── pyproject.toml                # pytest + ruff config
+├── .env.example
+└── .github/workflows/            # schedules + watchdog
 ```
 
 ---

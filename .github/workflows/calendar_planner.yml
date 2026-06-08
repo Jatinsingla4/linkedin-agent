@@ -40,7 +40,7 @@ jobs:
           YOUR_ROLE: "AI Executive"
           YOUR_COMPANY: "Grapes Worldwide"
           YOUR_LINKEDIN_NICHE: "Technical,branding,AI,agency life,startup"
-        run: python calendar_planner.py
+        run: python -m entrypoints.plan_calendar
 
       - name: Save content queue to repo
         if: always()

@@ -56,7 +56,7 @@ jobs:
           POLL_DAY: "6"
           CAROUSEL_DAY: "5"
           DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
-        run: python orchestrator.py
+        run: python -m entrypoints.run_agent
 
       - name: Save agent state back to repo
         if: always()
