@@ -185,7 +185,15 @@ class LinkedInClient:
             "actor": self._settings.linkedin_person_urn,
             "message": {"text": comment_text},
         }
-        async with session.post(url, json=payload, headers=self._headers) as resp:
+        # IMPORTANT: the socialActions/comments endpoint must NOT receive the
+        # "X-Restli-Protocol-Version: 2.0.0" header — with it, the encoded URN
+        # in the path triggers a 400 "Syntax exception in path variables".
+        # Verified live: dropping the header makes the comment succeed (201).
+        comment_headers = {
+            "Authorization": f"Bearer {self._settings.linkedin_access_token}",
+            "Content-Type": "application/json",
+        }
+        async with session.post(url, json=payload, headers=comment_headers) as resp:
             if resp.status in (200, 201):
                 logger.info("First comment posted successfully")
                 return True
