@@ -142,8 +142,8 @@ You should receive a Telegram message with a post preview. Tap ✅ — it will p
    | `GEMINI_API_KEY` | Google AI Studio |
    | `LINKEDIN_CLIENT_ID` | LinkedIn Developer App |
    | `LINKEDIN_CLIENT_SECRET` | LinkedIn Developer App |
-   | `LINKEDIN_ACCESS_TOKEN` | Output of `get_linkedin_token.py` |
-   | `LINKEDIN_PERSON_URN` | Output of `get_linkedin_token.py` |
+   | `LINKEDIN_ACCESS_TOKEN` | Output of `python -m entrypoints.get_linkedin_token` |
+   | `LINKEDIN_PERSON_URN` | Output of `python -m entrypoints.get_linkedin_token` |
    | `TELEGRAM_BOT_TOKEN` | @BotFather |
    | `TELEGRAM_CHAT_ID` | @userinfobot |
    | `UNSPLASH_ACCESS_KEY` | Unsplash developers |
@@ -217,7 +217,7 @@ linkedin-agent/
 ## Troubleshooting
 
 **"LinkedIn token expired"**
-→ Run `python get_linkedin_token.py` and update `LINKEDIN_ACCESS_TOKEN` in GitHub Secrets
+→ Run `python -m entrypoints.get_linkedin_token` and update `LINKEDIN_ACCESS_TOKEN` in GitHub Secrets
 
 **"Telegram preview not received"**
 → Check `TELEGRAM_CHAT_ID` — send a message to your bot first to activate it
