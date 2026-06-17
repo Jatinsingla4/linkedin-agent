@@ -1,17 +1,32 @@
 {
   "used_topics": [
     "the role of citations in aeo: why citations matter more than backlinks for ai visibility",
-    "what ai overviews mean for seo &amp; website traffic"
+    "what ai overviews mean for seo &amp; website traffic",
+    "us government suspends fable 5 & mythos 5 access over jailbreak concerns",
+    "everyone says ai can execute your ideas \u2014 but production-level apps still need skilled engineers"
   ],
-  "posts_published": 2,
-  "posts_this_week": 2,
-  "last_post_at": "2026-05-29T16:25:11.655447+00:00",
+  "posts_published": 4,
+  "posts_this_week": 4,
   "recent_posts": [
     {
       "topic": "What AI Overviews mean for SEO &amp; website traffic",
       "url": "https://www.linkedin.com/feed/update/urn:li:share:7466162737660850177/",
       "published_at": "2026-05-29T16:25:11.655461+00:00",
       "reminder_sent": false
+    },
+    {
+      "topic": "US Government suspends Fable 5 & Mythos 5 access over jailbreak concerns",
+      "url": "https://www.linkedin.com/feed/update/urn:li:share:7471464133805268992/",
+      "published_at": "2026-06-13T07:31:03.013691+00:00",
+      "reminder_sent": false
+    },
+    {
+      "topic": "Everyone says AI can execute your ideas \u2014 but production-level apps still need skilled engineers",
+      "url": "https://www.linkedin.com/feed/update/urn:li:share:7472167761985581056/",
+      "published_at": "2026-06-15T06:07:00.983509+00:00",
+      "reminder_sent": false
     }
-  ]
+  ],
+  "content_queue": [],
+  "last_post_at": "2026-06-15T06:07:00.983509+00:00"
 }
